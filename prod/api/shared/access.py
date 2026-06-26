@@ -46,10 +46,10 @@ REPORT_CATALOG = {
 }
 
 CONTAINER = "apollo-reports"
-# Azure Static Web Apps role names allow only letters, numbers, underscores
-# (no hyphens), so we use Apollo_ET / Apollo_CD_<clinic>.
-ET_GROUP = "Apollo_ET"
-CD_PREFIX = "Apollo_CD_"
+# Azure Static Web Apps lowercases role names in the invitation, so the role
+# arrives as 'apollo_et' / 'apollo_cd_<clinic>'. Match that exactly (case-sensitive).
+ET_GROUP = "apollo_et"
+CD_PREFIX = "apollo_cd_"
 
 
 def _principal_from_header(header_val: str) -> dict:
