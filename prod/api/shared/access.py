@@ -46,8 +46,10 @@ REPORT_CATALOG = {
 }
 
 CONTAINER = "apollo-reports"
-ET_GROUP = "Apollo-ET"
-CD_PREFIX = "Apollo-CD-"
+# Azure Static Web Apps role names allow only letters, numbers, underscores
+# (no hyphens), so we use Apollo_ET / Apollo_CD_<clinic>.
+ET_GROUP = "Apollo_ET"
+CD_PREFIX = "Apollo_CD_"
 
 
 def _principal_from_header(header_val: str) -> dict:
