@@ -4,12 +4,12 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Apollo Reporting Portal</title>
+<link rel="icon" href="data:,">
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-is@18/umd/react-is.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/prop-types@15/prop-types.min.js"></script>
 <script crossorigin src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <style>
   html, body { margin: 0; padding: 0; background: #f7f8fa; }
   #root { min-height: 100vh; display: grid; place-items: center; color: #5b6573; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; }
@@ -17,30 +17,32 @@
 </head>
 <body>
 <div id="root">Loading…</div>
-<script type="text/babel" data-type="script">
-const { useState, useMemo, useRef, useEffect } = React;
+<script>
+const {
+  useState,
+  useMemo,
+  useRef,
+  useEffect
+} = React;
 // Recharts is accessed lazily inside ChartCard so a slow/failed CDN load never blanks the page.
 
 /* ----------------------------- helpers ----------------------------- */
 
-const isNum = (v) => typeof v === "number" && isFinite(v);
-const isISODate = (v) =>
-  typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v);
-
+const isNum = v => typeof v === "number" && isFinite(v);
+const isISODate = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v);
 const fmtDate = (v, withTime = false) => {
   const d = new Date(v);
   if (isNaN(d)) return v;
   const date = d.toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
-    day: "2-digit",
+    day: "2-digit"
   });
   if (!withTime) return date;
-  return (
-    date +
-    " " +
-    d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })
-  );
+  return date + " " + d.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 };
 
 // Decide how a numeric cell should be formatted based on its column's name + value range.
@@ -48,9 +50,8 @@ const classifyColumn = (header, sampleVals) => {
   const h = (header || "").toString().toLowerCase();
   const nums = sampleVals.filter(isNum);
   if (!nums.length) return "text";
-  const allBetween0and1 = nums.every((n) => n >= -1.0001 && n <= 1.0001);
-  const someFractional = nums.some((n) => Math.abs(n) > 0 && Math.abs(n) < 1);
-
+  const allBetween0and1 = nums.every(n => n >= -1.0001 && n <= 1.0001);
+  const someFractional = nums.some(n => Math.abs(n) > 0 && Math.abs(n) < 1);
   if (/%|rate|pct|share|percent|of revenue|of payor/.test(h)) return "pct";
   if (allBetween0and1 && someFractional && nums.length > 1) return "pct";
   if (/\$|revenue|ar|amount|collected|receivabl|outstanding|gross|net|balance|charges|rev\b|dso/.test(h)) {
@@ -61,29 +62,33 @@ const classifyColumn = (header, sampleVals) => {
   if (/\/ ?unit|rev ?\/|rpu|per unit|\$\/unit/.test(h)) return "num2";
   return "num";
 };
-
-const fmtUSD = (n) =>
-  (n < 0 ? "(" : "") +
-  "$" +
-  Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 0 }) +
-  (n < 0 ? ")" : "");
-const fmtPct = (n) => (n * 100).toFixed(1) + "%";
-const fmtInt = (n) => Math.round(n).toLocaleString("en-US");
-const fmtNum = (n) =>
-  n.toLocaleString("en-US", { maximumFractionDigits: 1 });
-const fmtNum2 = (n) =>
-  n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
+const fmtUSD = n => (n < 0 ? "(" : "") + "$" + Math.abs(n).toLocaleString("en-US", {
+  maximumFractionDigits: 0
+}) + (n < 0 ? ")" : "");
+const fmtPct = n => (n * 100).toFixed(1) + "%";
+const fmtInt = n => Math.round(n).toLocaleString("en-US");
+const fmtNum = n => n.toLocaleString("en-US", {
+  maximumFractionDigits: 1
+});
+const fmtNum2 = n => n.toLocaleString("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
+});
 const fmtCell = (v, kind) => {
   if (v === null || v === undefined || v === "") return "";
   if (isISODate(v)) return fmtDate(v, v.includes(":") && !v.endsWith("00:00"));
   if (!isNum(v)) return v;
   switch (kind) {
-    case "usd": return fmtUSD(v);
-    case "pct": return fmtPct(v);
-    case "int": return fmtInt(v);
-    case "num2": return fmtNum2(v);
-    case "num": return fmtNum(v);
+    case "usd":
+      return fmtUSD(v);
+    case "pct":
+      return fmtPct(v);
+    case "int":
+      return fmtInt(v);
+    case "num2":
+      return fmtNum2(v);
+    case "num":
+      return fmtNum(v);
     default:
       return Number.isInteger(v) ? fmtInt(v) : fmtNum(v);
   }
@@ -97,8 +102,11 @@ function parseSheet(rows) {
   const titles = [];
   while (i < rows.length) {
     const r = rows[i] || [];
-    const filled = r.filter((x) => x !== null && x !== undefined && x !== "");
-    if (filled.length === 0) { i++; continue; }
+    const filled = r.filter(x => x !== null && x !== undefined && x !== "");
+    if (filled.length === 0) {
+      i++;
+      continue;
+    }
     if (filled.length === 1 && r.length <= 2) {
       titles.push(String(filled[0]));
       i++;
@@ -109,134 +117,132 @@ function parseSheet(rows) {
   const tables = [];
   while (i < rows.length) {
     // skip blanks
-    while (i < rows.length && (rows[i] || []).every((x) => x === null || x === undefined || x === "")) i++;
+    while (i < rows.length && (rows[i] || []).every(x => x === null || x === undefined || x === "")) i++;
     if (i >= rows.length) break;
 
     // a lone label row -> section caption
     const cur = rows[i] || [];
-    const filled = cur.filter((x) => x !== null && x !== undefined && x !== "");
+    const filled = cur.filter(x => x !== null && x !== undefined && x !== "");
     if (filled.length === 1 && cur.length <= 2) {
-      tables.push({ caption: String(filled[0]), header: null, rows: [] });
+      tables.push({
+        caption: String(filled[0]),
+        header: null,
+        rows: []
+      });
       i++;
       continue;
     }
 
     // header row
-    const header = cur.map((x) => (x === null || x === undefined ? "" : String(x)));
+    const header = cur.map(x => x === null || x === undefined ? "" : String(x));
     i++;
     const body = [];
     while (i < rows.length) {
       const rr = rows[i] || [];
-      if (rr.every((x) => x === null || x === undefined || x === "")) break;
+      if (rr.every(x => x === null || x === undefined || x === "")) break;
       // new lone-label section break
-      const f = rr.filter((x) => x !== null && x !== undefined && x !== "");
+      const f = rr.filter(x => x !== null && x !== undefined && x !== "");
       if (f.length === 1 && rr.length <= 2 && !isNum(f[0])) break;
       body.push(rr);
       i++;
     }
-    tables.push({ caption: null, header, rows: body });
+    tables.push({
+      caption: null,
+      header,
+      rows: body
+    });
   }
-  return { titles, tables };
+  return {
+    titles,
+    tables
+  };
 }
 
 /* Pre-compute column kinds for a table */
 function columnKinds(header, rows) {
   if (!header) return [];
   return header.map((h, c) => {
-    const sample = rows.slice(0, 40).map((r) => r[c]);
+    const sample = rows.slice(0, 40).map(r => r[c]);
     return classifyColumn(h, sample);
   });
 }
 
 /* ----------------------------- components ----------------------------- */
 
-function DataTable({ table, query }) {
-  const { header, rows, caption } = table;
-  const [sort, setSort] = useState({ col: null, dir: 1 });
-
+function DataTable({
+  table,
+  query
+}) {
+  const {
+    header,
+    rows,
+    caption
+  } = table;
+  const [sort, setSort] = useState({
+    col: null,
+    dir: 1
+  });
   const kinds = useMemo(() => columnKinds(header, rows), [header, rows]);
-
   const filtered = useMemo(() => {
     if (!query) return rows;
     const q = query.toLowerCase();
-    return rows.filter((r) =>
-      r.some((c) => c !== null && c !== undefined && String(c).toLowerCase().includes(q))
-    );
+    return rows.filter(r => r.some(c => c !== null && c !== undefined && String(c).toLowerCase().includes(q)));
   }, [rows, query]);
-
   const sorted = useMemo(() => {
     if (sort.col === null) return filtered;
     const c = sort.col;
     return [...filtered].sort((a, b) => {
-      const av = a[c], bv = b[c];
-      const an = isNum(av), bn = isNum(bv);
+      const av = a[c],
+        bv = b[c];
+      const an = isNum(av),
+        bn = isNum(bv);
       if (an && bn) return (av - bv) * sort.dir;
       return String(av ?? "").localeCompare(String(bv ?? "")) * sort.dir;
     });
   }, [filtered, sort]);
-
   if (caption && !header) {
-    return <div className="section-caption">{caption}</div>;
+    return /*#__PURE__*/React.createElement("div", {
+      className: "section-caption"
+    }, caption);
   }
   if (!header) return null;
-
-  const isTotalRow = (r) =>
-    r[0] && /^total$/i.test(String(r[0]).trim());
-
-  return (
-    <div className="table-block">
-      {caption && <div className="section-caption">{caption}</div>}
-      <div className="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              {header.map((h, c) => {
-                const right = ["usd", "pct", "int", "num", "num2"].includes(kinds[c]);
-                return (
-                  <th
-                    key={c}
-                    className={right ? "right" : ""}
-                    onClick={() =>
-                      setSort((s) =>
-                        s.col === c ? { col: c, dir: -s.dir } : { col: c, dir: 1 }
-                      )
-                    }
-                  >
-                    <span>{h}</span>
-                    {sort.col === c && (
-                      <span className="sort-arrow">{sort.dir === 1 ? "▲" : "▼"}</span>
-                    )}
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((r, ri) => (
-              <tr key={ri} className={isTotalRow(r) ? "total-row" : ""}>
-                {header.map((_, c) => {
-                  const v = r[c];
-                  const kind = kinds[c];
-                  const right = ["usd", "pct", "int", "num", "num2"].includes(kind);
-                  const neg = isNum(v) && v < 0 && (kind === "usd" || kind === "num");
-                  return (
-                    <td key={c} className={(right ? "right " : "") + (neg ? "neg" : "")}>
-                      {fmtCell(v, kind)}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {query && (
-        <div className="row-count">
-          {sorted.length} of {rows.length} rows
-        </div>
-      )}
-    </div>
-  );
+  const isTotalRow = r => r[0] && /^total$/i.test(String(r[0]).trim());
+  return /*#__PURE__*/React.createElement("div", {
+    className: "table-block"
+  }, caption && /*#__PURE__*/React.createElement("div", {
+    className: "section-caption"
+  }, caption), /*#__PURE__*/React.createElement("div", {
+    className: "table-scroll"
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, header.map((h, c) => {
+    const right = ["usd", "pct", "int", "num", "num2"].includes(kinds[c]);
+    return /*#__PURE__*/React.createElement("th", {
+      key: c,
+      className: right ? "right" : "",
+      onClick: () => setSort(s => s.col === c ? {
+        col: c,
+        dir: -s.dir
+      } : {
+        col: c,
+        dir: 1
+      })
+    }, /*#__PURE__*/React.createElement("span", null, h), sort.col === c && /*#__PURE__*/React.createElement("span", {
+      className: "sort-arrow"
+    }, sort.dir === 1 ? "▲" : "▼"));
+  }))), /*#__PURE__*/React.createElement("tbody", null, sorted.map((r, ri) => /*#__PURE__*/React.createElement("tr", {
+    key: ri,
+    className: isTotalRow(r) ? "total-row" : ""
+  }, header.map((_, c) => {
+    const v = r[c];
+    const kind = kinds[c];
+    const right = ["usd", "pct", "int", "num", "num2"].includes(kind);
+    const neg = isNum(v) && v < 0 && (kind === "usd" || kind === "num");
+    return /*#__PURE__*/React.createElement("td", {
+      key: c,
+      className: (right ? "right " : "") + (neg ? "neg" : "")
+    }, fmtCell(v, kind));
+  })))))), query && /*#__PURE__*/React.createElement("div", {
+    className: "row-count"
+  }, sorted.length, " of ", rows.length, " rows"));
 }
 
 /* ----------------------------- charts ----------------------------- */
@@ -251,9 +257,16 @@ function colToIdx(letters) {
 function parseA1(range) {
   const m = range.match(/^([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$/);
   if (!m) return null;
-  const c1 = colToIdx(m[1]), r1 = parseInt(m[2]) - 1;
-  const c2 = m[3] ? colToIdx(m[3]) : c1, r2 = m[4] ? parseInt(m[4]) - 1 : r1;
-  return { c1, r1, c2, r2 };
+  const c1 = colToIdx(m[1]),
+    r1 = parseInt(m[2]) - 1;
+  const c2 = m[3] ? colToIdx(m[3]) : c1,
+    r2 = m[4] ? parseInt(m[4]) - 1 : r1;
+  return {
+    c1,
+    r1,
+    c2,
+    r2
+  };
 }
 function readRange(sheetRows, range) {
   const a = parseA1(range);
@@ -261,8 +274,7 @@ function readRange(sheetRows, range) {
   const out = [];
   for (let r = a.r1; r <= a.r2; r++) {
     const row = sheetRows[r] || [];
-    if (a.c1 === a.c2) out.push(row[a.c1]);
-    else {
+    if (a.c1 === a.c2) out.push(row[a.c1]);else {
       const seg = [];
       for (let c = a.c1; c <= a.c2; c++) seg.push(row[c]);
       out.push(seg);
@@ -270,12 +282,7 @@ function readRange(sheetRows, range) {
   }
   return out;
 }
-
-const PALETTE = [
-  "#1f5f4f", "#c77b30", "#3b6ea5", "#9b4d6e", "#6a8f3c",
-  "#b4453a", "#7a5ca8", "#3a8f8f", "#a8893a", "#5b6573",
-  "#52946b", "#a35d5d", "#4a6d8c", "#8a7d3a",
-];
+const PALETTE = ["#1f5f4f", "#c77b30", "#3b6ea5", "#9b4d6e", "#6a8f3c", "#b4453a", "#7a5ca8", "#3a8f8f", "#a8893a", "#5b6573", "#52946b", "#a35d5d", "#4a6d8c", "#8a7d3a"];
 
 // Build recharts data array from a chart spec + the report's sheets
 function buildChartData(spec, sheetsByName) {
@@ -283,215 +290,295 @@ function buildChartData(spec, sheetsByName) {
   const catSheet = sheetsByName[spec.catSheet] || sheet;
   if (!sheet) return null;
   const cats = spec.catRange ? readRange(catSheet.rows, spec.catRange) : null;
-  const seriesVals = spec.series.map((s) => readRange(sheet.rows, s.range));
-  const n = cats ? cats.length : (seriesVals[0] ? seriesVals[0].length : 0);
+  const seriesVals = spec.series.map(s => readRange(sheet.rows, s.range));
+  const n = cats ? cats.length : seriesVals[0] ? seriesVals[0].length : 0;
   const data = [];
   for (let i = 0; i < n; i++) {
-    const row = { __cat: cats ? cats[i] : i + 1 };
+    const row = {
+      __cat: cats ? cats[i] : i + 1
+    };
     spec.series.forEach((s, si) => {
       const v = seriesVals[si][i];
-      row[s.name] = typeof v === "number" ? v : (v == null ? null : Number(v));
+      row[s.name] = typeof v === "number" ? v : v == null ? null : Number(v);
     });
     data.push(row);
   }
   return data;
 }
-
-const fmtAxisDate = (v) => (isISODate(v) ? fmtDate(v) : v);
+const fmtAxisDate = v => isISODate(v) ? fmtDate(v) : v;
 function isPct(spec) {
   return /%|percent/i.test(spec.title) || spec.grouping === "percentStacked";
 }
-const compactUSD = (n) => {
+const compactUSD = n => {
   if (!isNum(n)) return n;
   const a = Math.abs(n);
   if (a >= 1e6) return "$" + (n / 1e6).toFixed(1) + "M";
   if (a >= 1e3) return "$" + (n / 1e3).toFixed(0) + "K";
   return "$" + n;
 };
-
-function ChartCard({ spec, sheetsByName }) {
-  const R = (typeof Recharts !== "undefined") ? Recharts : null;
+function ChartCard({
+  spec,
+  sheetsByName
+}) {
+  const R = typeof Recharts !== "undefined" ? Recharts : null;
   if (!R) {
-    return React.createElement("div", {className:"chart-card"},
-      React.createElement("div", {className:"chart-title"}, spec.title),
-      React.createElement("div", {style:{color:"#5b6573",fontSize:"12px",padding:"8px 4px"}},
-        "Chart unavailable (visual library still loading) \u2014 data is in the tabs below."));
+    return React.createElement("div", {
+      className: "chart-card"
+    }, React.createElement("div", {
+      className: "chart-title"
+    }, spec.title), React.createElement("div", {
+      style: {
+        color: "#5b6573",
+        fontSize: "12px",
+        padding: "8px 4px"
+      }
+    }, "Chart unavailable (visual library still loading) \u2014 data is in the tabs below."));
   }
-  const { ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } = R;
+  const {
+    ResponsiveContainer,
+    LineChart,
+    Line,
+    BarChart,
+    Bar,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip,
+    Legend
+  } = R;
   const data = useMemo(() => buildChartData(spec, sheetsByName), [spec, sheetsByName]);
   if (!data || !data.length) return null;
-
   const pct = isPct(spec);
-  const yFmt = pct ? (v) => (v * 100).toFixed(0) + "%" : compactUSD;
-  const tipFmt = pct
-    ? (v) => (v == null ? "" : (v * 100).toFixed(1) + "%")
-    : (v) => (v == null ? "" : isNum(v) && Math.abs(v) >= 100 ? fmtUSD(v) : fmtNum2(v));
-
-  const many = data.length > 60;       // dense time series -> hide dots
+  const yFmt = pct ? v => (v * 100).toFixed(0) + "%" : compactUSD;
+  const tipFmt = pct ? v => v == null ? "" : (v * 100).toFixed(1) + "%" : v => v == null ? "" : isNum(v) && Math.abs(v) >= 100 ? fmtUSD(v) : fmtNum2(v);
+  const many = data.length > 60; // dense time series -> hide dots
   const manySeries = spec.series.length > 6;
-
-  return (
-    <div className="chart-card">
-      <div className="chart-title">{spec.title}</div>
-      <ResponsiveContainer width="100%" height={manySeries ? 340 : 300}>
-        {spec.type === "barChart" ? (
-          <BarChart data={data} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#eceff2" vertical={false} />
-            <XAxis dataKey="__cat" tickFormatter={fmtAxisDate} tick={{ fontSize: 10 }}
-              interval="preserveStartEnd" minTickGap={20} />
-            <YAxis tickFormatter={yFmt} tick={{ fontSize: 10 }} width={48} />
-            <Tooltip formatter={tipFmt} labelFormatter={fmtAxisDate} />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
-            {spec.series.map((s, i) => (
-              <Bar key={s.name} dataKey={s.name}
-                stackId={spec.grouping === "standard" ? undefined : "a"}
-                fill={PALETTE[i % PALETTE.length]} />
-            ))}
-          </BarChart>
-        ) : (
-          <LineChart data={data} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#eceff2" vertical={false} />
-            <XAxis dataKey="__cat" tickFormatter={fmtAxisDate} tick={{ fontSize: 10 }}
-              interval="preserveStartEnd" minTickGap={28} />
-            <YAxis tickFormatter={yFmt} tick={{ fontSize: 10 }} width={48} />
-            <Tooltip formatter={tipFmt} labelFormatter={fmtAxisDate} />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
-            {spec.series.map((s, i) => (
-              <Line key={s.name} dataKey={s.name} type="monotone"
-                stroke={PALETTE[i % PALETTE.length]} strokeWidth={1.6}
-                dot={many ? false : { r: 2 }} activeDot={{ r: 4 }}
-                connectNulls />
-            ))}
-          </LineChart>
-        )}
-      </ResponsiveContainer>
-    </div>
-  );
+  return /*#__PURE__*/React.createElement("div", {
+    className: "chart-card"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "chart-title"
+  }, spec.title), /*#__PURE__*/React.createElement(ResponsiveContainer, {
+    width: "100%",
+    height: manySeries ? 340 : 300
+  }, spec.type === "barChart" ? /*#__PURE__*/React.createElement(BarChart, {
+    data: data,
+    margin: {
+      top: 8,
+      right: 16,
+      left: 8,
+      bottom: 8
+    }
+  }, /*#__PURE__*/React.createElement(CartesianGrid, {
+    strokeDasharray: "3 3",
+    stroke: "#eceff2",
+    vertical: false
+  }), /*#__PURE__*/React.createElement(XAxis, {
+    dataKey: "__cat",
+    tickFormatter: fmtAxisDate,
+    tick: {
+      fontSize: 10
+    },
+    interval: "preserveStartEnd",
+    minTickGap: 20
+  }), /*#__PURE__*/React.createElement(YAxis, {
+    tickFormatter: yFmt,
+    tick: {
+      fontSize: 10
+    },
+    width: 48
+  }), /*#__PURE__*/React.createElement(Tooltip, {
+    formatter: tipFmt,
+    labelFormatter: fmtAxisDate
+  }), /*#__PURE__*/React.createElement(Legend, {
+    wrapperStyle: {
+      fontSize: 11
+    }
+  }), spec.series.map((s, i) => /*#__PURE__*/React.createElement(Bar, {
+    key: s.name,
+    dataKey: s.name,
+    stackId: spec.grouping === "standard" ? undefined : "a",
+    fill: PALETTE[i % PALETTE.length]
+  }))) : /*#__PURE__*/React.createElement(LineChart, {
+    data: data,
+    margin: {
+      top: 8,
+      right: 16,
+      left: 8,
+      bottom: 8
+    }
+  }, /*#__PURE__*/React.createElement(CartesianGrid, {
+    strokeDasharray: "3 3",
+    stroke: "#eceff2",
+    vertical: false
+  }), /*#__PURE__*/React.createElement(XAxis, {
+    dataKey: "__cat",
+    tickFormatter: fmtAxisDate,
+    tick: {
+      fontSize: 10
+    },
+    interval: "preserveStartEnd",
+    minTickGap: 28
+  }), /*#__PURE__*/React.createElement(YAxis, {
+    tickFormatter: yFmt,
+    tick: {
+      fontSize: 10
+    },
+    width: 48
+  }), /*#__PURE__*/React.createElement(Tooltip, {
+    formatter: tipFmt,
+    labelFormatter: fmtAxisDate
+  }), /*#__PURE__*/React.createElement(Legend, {
+    wrapperStyle: {
+      fontSize: 11
+    }
+  }), spec.series.map((s, i) => /*#__PURE__*/React.createElement(Line, {
+    key: s.name,
+    dataKey: s.name,
+    type: "monotone",
+    stroke: PALETTE[i % PALETTE.length],
+    strokeWidth: 1.6,
+    dot: many ? false : {
+      r: 2
+    },
+    activeDot: {
+      r: 4
+    },
+    connectNulls: true
+  })))));
 }
-
-function SheetView({ sheet, charts, sheetsByName }) {
+function SheetView({
+  sheet,
+  charts,
+  sheetsByName
+}) {
   const [query, setQuery] = useState("");
   const parsed = useMemo(() => parseSheet(sheet.rows), [sheet]);
   const bigTable = sheet.rows.length > 25;
-  const sheetCharts = (charts || []).filter((c) => c.sheet === sheet.name);
-
-  return (
-    <div className="sheet">
-      <div className="sheet-head">
-        <div>
-          {parsed.titles.map((t, i) => (
-            <div key={i} className={i === 0 ? "sheet-title" : "sheet-sub"}>
-              {t}
-            </div>
-          ))}
-        </div>
-        {bigTable && (
-          <input
-            className="search"
-            placeholder="Filter rows…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        )}
-      </div>
-      {sheetCharts.length > 0 && (
-        <div className="chart-grid on-sheet">
-          {sheetCharts.map((spec, i) => (
-            <ChartCard key={i} spec={spec} sheetsByName={sheetsByName} />
-          ))}
-        </div>
-      )}
-      {sheetCharts.length > 0 && parsed.tables.length > 0 && (
-        <div className="sheet-data-divider">Data</div>
-      )}
-      {parsed.tables.map((t, i) => (
-        <DataTable key={i} table={t} query={query} />
-      ))}
-    </div>
-  );
+  const sheetCharts = (charts || []).filter(c => c.sheet === sheet.name);
+  return /*#__PURE__*/React.createElement("div", {
+    className: "sheet"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sheet-head"
+  }, /*#__PURE__*/React.createElement("div", null, parsed.titles.map((t, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    className: i === 0 ? "sheet-title" : "sheet-sub"
+  }, t))), bigTable && /*#__PURE__*/React.createElement("input", {
+    className: "search",
+    placeholder: "Filter rows…",
+    value: query,
+    onChange: e => setQuery(e.target.value)
+  })), sheetCharts.length > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "chart-grid on-sheet"
+  }, sheetCharts.map((spec, i) => /*#__PURE__*/React.createElement(ChartCard, {
+    key: i,
+    spec: spec,
+    sheetsByName: sheetsByName
+  }))), sheetCharts.length > 0 && parsed.tables.length > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "sheet-data-divider"
+  }, "Data"), parsed.tables.map((t, i) => /*#__PURE__*/React.createElement(DataTable, {
+    key: i,
+    table: t,
+    query: query
+  })));
 }
-
-function ReportView({ report }) {
+function ReportView({
+  report
+}) {
   const sheets = report.sheets;
   const charts = report.charts || [];
   const [active, setActive] = useState(0);
   useEffect(() => setActive(0), [report]);
-
   const sheetsByName = useMemo(() => {
     const m = {};
-    sheets.forEach((s) => (m[s.name] = s));
+    sheets.forEach(s => m[s.name] = s);
     return m;
   }, [sheets]);
-
   const chartCounts = useMemo(() => {
     const c = {};
-    charts.forEach((ch) => (c[ch.sheet] = (c[ch.sheet] || 0) + 1));
+    charts.forEach(ch => c[ch.sheet] = (c[ch.sheet] || 0) + 1);
     return c;
   }, [charts]);
-
-  return (
-    <div className="report">
-      <div className="sheet-tabs">
-        {sheets.map((s, i) => (
-          <button
-            key={i}
-            className={"sheet-tab" + (i === active ? " active" : "")}
-            onClick={() => setActive(i)}
-          >
-            {s.name}
-            {chartCounts[s.name] ? <span className="tab-chart-dot">◷</span> : null}
-          </button>
-        ))}
-      </div>
-      <SheetView
-        sheet={sheets[active]}
-        charts={charts}
-        sheetsByName={sheetsByName}
-        key={active}
-      />
-    </div>
-  );
+  return /*#__PURE__*/React.createElement("div", {
+    className: "report"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sheet-tabs"
+  }, sheets.map((s, i) => /*#__PURE__*/React.createElement("button", {
+    key: i,
+    className: "sheet-tab" + (i === active ? " active" : ""),
+    onClick: () => setActive(i)
+  }, s.name, chartCounts[s.name] ? /*#__PURE__*/React.createElement("span", {
+    className: "tab-chart-dot"
+  }, "◷") : null))), /*#__PURE__*/React.createElement(SheetView, {
+    sheet: sheets[active],
+    charts: charts,
+    sheetsByName: sheetsByName,
+    key: active
+  }));
 }
-
 
 // Simple fetch helpers ------------------------------------------------------
 async function apiGet(url) {
-  const r = await fetch(url, { credentials: "include" });
+  const r = await fetch(url, {
+    credentials: "include"
+  });
   if (r.status === 401) {
     // Not logged in — SWA redirects, but force it just in case.
-    window.location.href = "/.auth/login/aad?post_login_redirect_uri=" +
-      encodeURIComponent(window.location.pathname);
+    window.location.href = "/.auth/login/aad?post_login_redirect_uri=" + encodeURIComponent(window.location.pathname);
     throw new Error("redirecting to login");
   }
   if (!r.ok) throw new Error("HTTP " + r.status);
   return r.json();
 }
-
 function App() {
-  const [boot, setBoot] = useState({ loading: true, error: null, user: null, reports: [] });
-  const [sel, setSel] = useState(null);                  // {key, clinic, title}
-  const [report, setReport] = useState({ loading: false, error: null, data: null });
+  const [boot, setBoot] = useState({
+    loading: true,
+    error: null,
+    user: null,
+    reports: []
+  });
+  const [sel, setSel] = useState(null); // {key, clinic, title}
+  const [report, setReport] = useState({
+    loading: false,
+    error: null,
+    data: null
+  });
 
   // 1) On load, get the user + their visible reports
   useEffect(() => {
-    apiGet("/api/reports")
-      .then((d) => {
-        setBoot({ loading: false, error: null, user: d.user, reports: d.reports });
-        if (d.reports.length) setSel(d.reports[0]);
-      })
-      .catch((e) =>
-        setBoot({ loading: false, error: e.message, user: null, reports: [] }));
+    apiGet("/api/reports").then(d => {
+      setBoot({
+        loading: false,
+        error: null,
+        user: d.user,
+        reports: d.reports
+      });
+      if (d.reports.length) setSel(d.reports[0]);
+    }).catch(e => setBoot({
+      loading: false,
+      error: e.message,
+      user: null,
+      reports: []
+    }));
   }, []);
 
   // 2) When a report is selected, fetch its parsed JSON
   useEffect(() => {
     if (!sel) return;
-    setReport({ loading: true, error: null, data: null });
-    apiGet(`/api/report/${sel.key}/${sel.clinic}`)
-      .then((d) => setReport({ loading: false, error: null, data: d }))
-      .catch((e) => setReport({ loading: false, error: e.message, data: null }));
+    setReport({
+      loading: true,
+      error: null,
+      data: null
+    });
+    apiGet(`/api/report/${sel.key}/${sel.clinic}`).then(d => setReport({
+      loading: false,
+      error: null,
+      data: d
+    })).catch(e => setReport({
+      loading: false,
+      error: e.message,
+      data: null
+    }));
   }, [sel]);
-
   const downloadXlsx = () => {
     if (!sel) return;
     window.location.href = `/api/report/${sel.key}/${sel.clinic}?format=xlsx`;
@@ -499,103 +586,79 @@ function App() {
 
   // ---- render states ----
   if (boot.loading) {
-    return (
-      <div className="app">
-        <style>{CSS}</style>
-        <div className="centered">Loading reports…</div>
-      </div>
-    );
+    return /*#__PURE__*/React.createElement("div", {
+      className: "app"
+    }, /*#__PURE__*/React.createElement("style", null, CSS), /*#__PURE__*/React.createElement("div", {
+      className: "centered"
+    }, "Loading reports…"));
   }
   if (boot.error) {
-    return (
-      <div className="app">
-        <style>{CSS}</style>
-        <div className="centered error">
-          Couldn't load reports ({boot.error}).{" "}
-          <a href="/.auth/login/aad">Sign in</a>
-        </div>
-      </div>
-    );
+    return /*#__PURE__*/React.createElement("div", {
+      className: "app"
+    }, /*#__PURE__*/React.createElement("style", null, CSS), /*#__PURE__*/React.createElement("div", {
+      className: "centered error"
+    }, "Couldn't load reports (", boot.error, ").", " ", /*#__PURE__*/React.createElement("a", {
+      href: "/.auth/login/aad"
+    }, "Sign in")));
   }
-
   const user = boot.user;
-  const accessLabel = user.isET
-    ? "Executive Team view"
-    : user.clinics.length === 1
-      ? `${user.clinics[0]} view`
-      : `${user.clinics.length} clinics`;
+  const accessLabel = user.isET ? "Executive Team view" : user.clinics.length === 1 ? `${user.clinics[0]} view` : `${user.clinics.length} clinics`;
 
   // Group reports for the rail: dedupe by key when ET (clinic === 'all')
   const rail = boot.reports;
-
-  return (
-    <div className="app">
-      <style>{CSS}</style>
-      <header className="topbar">
-        <div className="brand">
-          <div className="brand-mark">A</div>
-          <div>
-            <div className="brand-name">Apollo Behavior Services</div>
-            <div className="brand-sub">Operations Reporting</div>
-          </div>
-        </div>
-        <div className="access-wrap">
-          <span className="access-tag">{accessLabel}</span>
-          <a className="signout" href="/logout">Sign out</a>
-        </div>
-      </header>
-
-      {rail.length === 0 ? (
-        <div className="centered">
-          No reports are shared with your account yet. Contact the operations team.
-        </div>
-      ) : (
-        <>
-          <nav className="report-rail">
-            {rail.map((r) => {
-              const active = sel && r.key === sel.key && r.clinic === sel.clinic;
-              return (
-                <button
-                  key={r.key + ":" + r.clinic}
-                  className={"report-card" + (active ? " active" : "")}
-                  onClick={() => setSel(r)}
-                >
-                  <div className="rc-title">{r.title}</div>
-                  <div className="rc-meta">
-                    {r.clinic === "all" ? "All clinics" : r.clinic}
-                  </div>
-                </button>
-              );
-            })}
-          </nav>
-
-          <div className="report-header">
-            <div>
-              <h1>{sel ? sel.title : ""} Report</h1>
-              <div className="rh-meta">
-                {sel && sel.clinic !== "all" ? sel.clinic + " · " : ""}Latest available
-              </div>
-            </div>
-            <button className="download" onClick={downloadXlsx} disabled={!report.data}>
-              ↓ Download .xlsx
-            </button>
-          </div>
-
-          {report.loading && <div className="centered">Loading {sel?.title}…</div>}
-          {report.error && (
-            <div className="centered error">Couldn't load this report ({report.error}).</div>
-          )}
-          {report.data && <ReportView report={report.data} key={sel.key + sel.clinic} />}
-        </>
-      )}
-
-      <footer className="foot">
-        Latest available reports, refreshed automatically. Figures are read-only.
-      </footer>
-    </div>
-  );
+  return /*#__PURE__*/React.createElement("div", {
+    className: "app"
+  }, /*#__PURE__*/React.createElement("style", null, CSS), /*#__PURE__*/React.createElement("header", {
+    className: "topbar"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "brand"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "brand-mark"
+  }, "A"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "brand-name"
+  }, "Apollo Behavior Services"), /*#__PURE__*/React.createElement("div", {
+    className: "brand-sub"
+  }, "Operations Reporting"))), /*#__PURE__*/React.createElement("div", {
+    className: "access-wrap"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "access-tag"
+  }, accessLabel), /*#__PURE__*/React.createElement("a", {
+    className: "signout",
+    href: "/logout"
+  }, "Sign out"))), rail.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "centered"
+  }, "No reports are shared with your account yet. Contact the operations team.") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("nav", {
+    className: "report-rail"
+  }, rail.map(r => {
+    const active = sel && r.key === sel.key && r.clinic === sel.clinic;
+    return /*#__PURE__*/React.createElement("button", {
+      key: r.key + ":" + r.clinic,
+      className: "report-card" + (active ? " active" : ""),
+      onClick: () => setSel(r)
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "rc-title"
+    }, r.title), /*#__PURE__*/React.createElement("div", {
+      className: "rc-meta"
+    }, r.clinic === "all" ? "All clinics" : r.clinic));
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "report-header"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h1", null, sel ? sel.title : "", " Report"), /*#__PURE__*/React.createElement("div", {
+    className: "rh-meta"
+  }, sel && sel.clinic !== "all" ? sel.clinic + " · " : "", "Latest available")), /*#__PURE__*/React.createElement("button", {
+    className: "download",
+    onClick: downloadXlsx,
+    disabled: !report.data
+  }, "↓ Download .xlsx")), report.loading && /*#__PURE__*/React.createElement("div", {
+    className: "centered"
+  }, "Loading ", sel?.title, "…"), report.error && /*#__PURE__*/React.createElement("div", {
+    className: "centered error"
+  }, "Couldn't load this report (", report.error, ")."), report.data && /*#__PURE__*/React.createElement(ReportView, {
+    report: report.data,
+    key: sel.key + sel.clinic
+  })), /*#__PURE__*/React.createElement("footer", {
+    className: "foot"
+  }, "Latest available reports, refreshed automatically. Figures are read-only."));
 }
-
 const CSS = `
 * { box-sizing: border-box; }
 .app {
@@ -758,14 +821,11 @@ tbody tr.total-row td { border-top: 1px solid var(--line-strong); }
 .signout:hover { color: var(--ink); text-decoration: underline; }
 .download:disabled { opacity: .45; cursor: default; }
 `;
-
-
 function boot() {
   const root = ReactDOM.createRoot(document.getElementById("root"));
   root.render(React.createElement(App));
 }
 boot();
-
 </script>
 </body>
 </html>
