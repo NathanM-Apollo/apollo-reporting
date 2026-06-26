@@ -1,0 +1,9 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "AzureWebJobsStorage": "",
+    "REPORTS_STORAGE_CONNECTION": "<paste your storage account connection string>",
+    "REPORTS_CONTAINER": "apollo-reports"
+  }
+}

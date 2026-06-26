@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Apollo Reporting Portal</title>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  html, body { margin: 0; padding: 0; background: #f7f8fa; }
+  #root { min-height: 100vh; display: grid; place-items: center; color: #5b6573; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; }
+</style>
+</head>
+<body>
+<div id="root">Loading…</div>
+<script type="text/babel">
+const { useState, useMemo, useRef, useEffect } = React;
+const { ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } = Recharts;
+
+/* ----------------------------- helpers ----------------------------- */
+
+const isNum = (v) => typeof v === "number" && isFinite(v);
+const isISODate = (v) =>
+  typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v);
+
+const fmtDate = (v, withTime = false) => {
+  const d = new Date(v);
+  if (isNaN(d)) return v;
+  const date = d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  });
+  if (!withTime) return date;
+  return (
+    date +
+    " " +
+    d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })
+  );
+};
+
+// Decide how a numeric cell should be formatted based on its column's name + value range.
+const classifyColumn = (header, sampleVals) => {
+  const h = (header || "").toString().toLowerCase();
+  const nums = sampleVals.filter(isNum);
+  if (!nums.length) return "text";
+  const allBetween0and1 = nums.every((n) => n >= -1.0001 && n <= 1.0001);
+  const someFractional = nums.some((n) => Math.abs(n) > 0 && Math.abs(n) < 1);
+
+  if (/%|rate|pct|share|percent|of revenue|of payor/.test(h)) return "pct";
+  if (allBetween0and1 && someFractional && nums.length > 1) return "pct";
+  if (/\$|revenue|ar|amount|collected|receivabl|outstanding|gross|net|balance|charges|rev\b|dso/.test(h)) {
+    if (/dso|days|ratio|\/ ?unit|rpu|per unit/.test(h)) return "num";
+    return "usd";
+  }
+  if (/units|sessions|rows|count|headcount|claims|#/.test(h)) return "int";
+  if (/\/ ?unit|rev ?\/|rpu|per unit|\$\/unit/.test(h)) return "num2";
+  return "num";
+};
+
+const fmtUSD = (n) =>
+  (n < 0 ? "(" : "") +
+  "$" +
+  Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 0 }) +
+  (n < 0 ? ")" : "");
+const fmtPct = (n) => (n * 100).toFixed(1) + "%";
+const fmtInt = (n) => Math.round(n).toLocaleString("en-US");
+const fmtNum = (n) =>
+  n.toLocaleString("en-US", { maximumFractionDigits: 1 });
+const fmtNum2 = (n) =>
+  n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const fmtCell = (v, kind) => {
+  if (v === null || v === undefined || v === "") return "";
+  if (isISODate(v)) return fmtDate(v, v.includes(":") && !v.endsWith("00:00"));
+  if (!isNum(v)) return v;
+  switch (kind) {
+    case "usd": return fmtUSD(v);
+    case "pct": return fmtPct(v);
+    case "int": return fmtInt(v);
+    case "num2": return fmtNum2(v);
+    case "num": return fmtNum(v);
+    default:
+      return Number.isInteger(v) ? fmtInt(v) : fmtNum(v);
+  }
+};
+
+/* Detect the structure of a sheet: leading title lines, then a header row, then a grid.
+   Some sheets have multiple stacked tables; we render them as sections. */
+function parseSheet(rows) {
+  // Title block = leading rows that are mostly single-cell or empty
+  let i = 0;
+  const titles = [];
+  while (i < rows.length) {
+    const r = rows[i] || [];
+    const filled = r.filter((x) => x !== null && x !== undefined && x !== "");
+    if (filled.length === 0) { i++; continue; }
+    if (filled.length === 1 && r.length <= 2) {
+      titles.push(String(filled[0]));
+      i++;
+    } else break;
+  }
+
+  // Build tables: a table = a header row followed by data rows, until a blank row or a new single-cell label
+  const tables = [];
+  while (i < rows.length) {
+    // skip blanks
+    while (i < rows.length && (rows[i] || []).every((x) => x === null || x === undefined || x === "")) i++;
+    if (i >= rows.length) break;
+
+    // a lone label row -> section caption
+    const cur = rows[i] || [];
+    const filled = cur.filter((x) => x !== null && x !== undefined && x !== "");
+    if (filled.length === 1 && cur.length <= 2) {
+      tables.push({ caption: String(filled[0]), header: null, rows: [] });
+      i++;
+      continue;
+    }
+
+    // header row
+    const header = cur.map((x) => (x === null || x === undefined ? "" : String(x)));
+    i++;
+    const body = [];
+    while (i < rows.length) {
+      const rr = rows[i] || [];
+      if (rr.every((x) => x === null || x === undefined || x === "")) break;
+      // new lone-label section break
+      const f = rr.filter((x) => x !== null && x !== undefined && x !== "");
+      if (f.length === 1 && rr.length <= 2 && !isNum(f[0])) break;
+      body.push(rr);
+      i++;
+    }
+    tables.push({ caption: null, header, rows: body });
+  }
+  return { titles, tables };
+}
+
+/* Pre-compute column kinds for a table */
+function columnKinds(header, rows) {
+  if (!header) return [];
+  return header.map((h, c) => {
+    const sample = rows.slice(0, 40).map((r) => r[c]);
+    return classifyColumn(h, sample);
+  });
+}
+
+/* ----------------------------- components ----------------------------- */
+
+function DataTable({ table, query }) {
+  const { header, rows, caption } = table;
+  const [sort, setSort] = useState({ col: null, dir: 1 });
+
+  const kinds = useMemo(() => columnKinds(header, rows), [header, rows]);
+
+  const filtered = useMemo(() => {
+    if (!query) return rows;
+    const q = query.toLowerCase();
+    return rows.filter((r) =>
+      r.some((c) => c !== null && c !== undefined && String(c).toLowerCase().includes(q))
+    );
+  }, [rows, query]);
+
+  const sorted = useMemo(() => {
+    if (sort.col === null) return filtered;
+    const c = sort.col;
+    return [...filtered].sort((a, b) => {
+      const av = a[c], bv = b[c];
+      const an = isNum(av), bn = isNum(bv);
+      if (an && bn) return (av - bv) * sort.dir;
+      return String(av ?? "").localeCompare(String(bv ?? "")) * sort.dir;
+    });
+  }, [filtered, sort]);
+
+  if (caption && !header) {
+    return <div className="section-caption">{caption}</div>;
+  }
+  if (!header) return null;
+
+  const isTotalRow = (r) =>
+    r[0] && /^total$/i.test(String(r[0]).trim());
+
+  return (
+    <div className="table-block">
+      {caption && <div className="section-caption">{caption}</div>}
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              {header.map((h, c) => {
+                const right = ["usd", "pct", "int", "num", "num2"].includes(kinds[c]);
+                return (
+                  <th
+                    key={c}
+                    className={right ? "right" : ""}
+                    onClick={() =>
+                      setSort((s) =>
+                        s.col === c ? { col: c, dir: -s.dir } : { col: c, dir: 1 }
+                      )
+                    }
+                  >
+                    <span>{h}</span>
+                    {sort.col === c && (
+                      <span className="sort-arrow">{sort.dir === 1 ? "▲" : "▼"}</span>
+                    )}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((r, ri) => (
+              <tr key={ri} className={isTotalRow(r) ? "total-row" : ""}>
+                {header.map((_, c) => {
+                  const v = r[c];
+                  const kind = kinds[c];
+                  const right = ["usd", "pct", "int", "num", "num2"].includes(kind);
+                  const neg = isNum(v) && v < 0 && (kind === "usd" || kind === "num");
+                  return (
+                    <td key={c} className={(right ? "right " : "") + (neg ? "neg" : "")}>
+                      {fmtCell(v, kind)}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {query && (
+        <div className="row-count">
+          {sorted.length} of {rows.length} rows
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ----------------------------- charts ----------------------------- */
+
+// Excel column letters -> 0-based index
+function colToIdx(letters) {
+  let n = 0;
+  for (const ch of letters) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n - 1;
+}
+// "B6:B15" -> {c1,r1,c2,r2} 0-based; rows in our data are 0-based, Excel is 1-based
+function parseA1(range) {
+  const m = range.match(/^([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$/);
+  if (!m) return null;
+  const c1 = colToIdx(m[1]), r1 = parseInt(m[2]) - 1;
+  const c2 = m[3] ? colToIdx(m[3]) : c1, r2 = m[4] ? parseInt(m[4]) - 1 : r1;
+  return { c1, r1, c2, r2 };
+}
+function readRange(sheetRows, range) {
+  const a = parseA1(range);
+  if (!a) return [];
+  const out = [];
+  for (let r = a.r1; r <= a.r2; r++) {
+    const row = sheetRows[r] || [];
+    if (a.c1 === a.c2) out.push(row[a.c1]);
+    else {
+      const seg = [];
+      for (let c = a.c1; c <= a.c2; c++) seg.push(row[c]);
+      out.push(seg);
+    }
+  }
+  return out;
+}
+
+const PALETTE = [
+  "#1f5f4f", "#c77b30", "#3b6ea5", "#9b4d6e", "#6a8f3c",
+  "#b4453a", "#7a5ca8", "#3a8f8f", "#a8893a", "#5b6573",
+  "#52946b", "#a35d5d", "#4a6d8c", "#8a7d3a",
+];
+
+// Build recharts data array from a chart spec + the report's sheets
+function buildChartData(spec, sheetsByName) {
+  const sheet = sheetsByName[spec.sheet];
+  const catSheet = sheetsByName[spec.catSheet] || sheet;
+  if (!sheet) return null;
+  const cats = spec.catRange ? readRange(catSheet.rows, spec.catRange) : null;
+  const seriesVals = spec.series.map((s) => readRange(sheet.rows, s.range));
+  const n = cats ? cats.length : (seriesVals[0] ? seriesVals[0].length : 0);
+  const data = [];
+  for (let i = 0; i < n; i++) {
+    const row = { __cat: cats ? cats[i] : i + 1 };
+    spec.series.forEach((s, si) => {
+      const v = seriesVals[si][i];
+      row[s.name] = typeof v === "number" ? v : (v == null ? null : Number(v));
+    });
+    data.push(row);
+  }
+  return data;
+}
+
+const fmtAxisDate = (v) => (isISODate(v) ? fmtDate(v) : v);
+function isPct(spec) {
+  return /%|percent/i.test(spec.title) || spec.grouping === "percentStacked";
+}
+const compactUSD = (n) => {
+  if (!isNum(n)) return n;
+  const a = Math.abs(n);
+  if (a >= 1e6) return "$" + (n / 1e6).toFixed(1) + "M";
+  if (a >= 1e3) return "$" + (n / 1e3).toFixed(0) + "K";
+  return "$" + n;
+};
+
+function ChartCard({ spec, sheetsByName }) {
+  const data = useMemo(() => buildChartData(spec, sheetsByName), [spec, sheetsByName]);
+  if (!data || !data.length) return null;
+
+  const pct = isPct(spec);
+  const yFmt = pct ? (v) => (v * 100).toFixed(0) + "%" : compactUSD;
+  const tipFmt = pct
+    ? (v) => (v == null ? "" : (v * 100).toFixed(1) + "%")
+    : (v) => (v == null ? "" : isNum(v) && Math.abs(v) >= 100 ? fmtUSD(v) : fmtNum2(v));
+
+  const many = data.length > 60;       // dense time series -> hide dots
+  const manySeries = spec.series.length > 6;
+
+  return (
+    <div className="chart-card">
+      <div className="chart-title">{spec.title}</div>
+      <ResponsiveContainer width="100%" height={manySeries ? 340 : 300}>
+        {spec.type === "barChart" ? (
+          <BarChart data={data} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#eceff2" vertical={false} />
+            <XAxis dataKey="__cat" tickFormatter={fmtAxisDate} tick={{ fontSize: 10 }}
+              interval="preserveStartEnd" minTickGap={20} />
+            <YAxis tickFormatter={yFmt} tick={{ fontSize: 10 }} width={48} />
+            <Tooltip formatter={tipFmt} labelFormatter={fmtAxisDate} />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+            {spec.series.map((s, i) => (
+              <Bar key={s.name} dataKey={s.name}
+                stackId={spec.grouping === "standard" ? undefined : "a"}
+                fill={PALETTE[i % PALETTE.length]} />
+            ))}
+          </BarChart>
+        ) : (
+          <LineChart data={data} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#eceff2" vertical={false} />
+            <XAxis dataKey="__cat" tickFormatter={fmtAxisDate} tick={{ fontSize: 10 }}
+              interval="preserveStartEnd" minTickGap={28} />
+            <YAxis tickFormatter={yFmt} tick={{ fontSize: 10 }} width={48} />
+            <Tooltip formatter={tipFmt} labelFormatter={fmtAxisDate} />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+            {spec.series.map((s, i) => (
+              <Line key={s.name} dataKey={s.name} type="monotone"
+                stroke={PALETTE[i % PALETTE.length]} strokeWidth={1.6}
+                dot={many ? false : { r: 2 }} activeDot={{ r: 4 }}
+                connectNulls />
+            ))}
+          </LineChart>
+        )}
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function SheetView({ sheet, charts, sheetsByName }) {
+  const [query, setQuery] = useState("");
+  const parsed = useMemo(() => parseSheet(sheet.rows), [sheet]);
+  const bigTable = sheet.rows.length > 25;
+  const sheetCharts = (charts || []).filter((c) => c.sheet === sheet.name);
+
+  return (
+    <div className="sheet">
+      <div className="sheet-head">
+        <div>
+          {parsed.titles.map((t, i) => (
+            <div key={i} className={i === 0 ? "sheet-title" : "sheet-sub"}>
+              {t}
+            </div>
+          ))}
+        </div>
+        {bigTable && (
+          <input
+            className="search"
+            placeholder="Filter rows…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        )}
+      </div>
+      {sheetCharts.length > 0 && (
+        <div className="chart-grid on-sheet">
+          {sheetCharts.map((spec, i) => (
+            <ChartCard key={i} spec={spec} sheetsByName={sheetsByName} />
+          ))}
+        </div>
+      )}
+      {sheetCharts.length > 0 && parsed.tables.length > 0 && (
+        <div className="sheet-data-divider">Data</div>
+      )}
+      {parsed.tables.map((t, i) => (
+        <DataTable key={i} table={t} query={query} />
+      ))}
+    </div>
+  );
+}
+
+function ReportView({ report }) {
+  const sheets = report.sheets;
+  const charts = report.charts || [];
+  const [active, setActive] = useState(0);
+  useEffect(() => setActive(0), [report]);
+
+  const sheetsByName = useMemo(() => {
+    const m = {};
+    sheets.forEach((s) => (m[s.name] = s));
+    return m;
+  }, [sheets]);
+
+  const chartCounts = useMemo(() => {
+    const c = {};
+    charts.forEach((ch) => (c[ch.sheet] = (c[ch.sheet] || 0) + 1));
+    return c;
+  }, [charts]);
+
+  return (
+    <div className="report">
+      <div className="sheet-tabs">
+        {sheets.map((s, i) => (
+          <button
+            key={i}
+            className={"sheet-tab" + (i === active ? " active" : "")}
+            onClick={() => setActive(i)}
+          >
+            {s.name}
+            {chartCounts[s.name] ? <span className="tab-chart-dot">◷</span> : null}
+          </button>
+        ))}
+      </div>
+      <SheetView
+        sheet={sheets[active]}
+        charts={charts}
+        sheetsByName={sheetsByName}
+        key={active}
+      />
+    </div>
+  );
+}
+
+
+// Simple fetch helpers ------------------------------------------------------
+async function apiGet(url) {
+  const r = await fetch(url, { credentials: "include" });
+  if (r.status === 401) {
+    // Not logged in — SWA redirects, but force it just in case.
+    window.location.href = "/.auth/login/aad?post_login_redirect_uri=" +
+      encodeURIComponent(window.location.pathname);
+    throw new Error("redirecting to login");
+  }
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+
+function App() {
+  const [boot, setBoot] = useState({ loading: true, error: null, user: null, reports: [] });
+  const [sel, setSel] = useState(null);                  // {key, clinic, title}
+  const [report, setReport] = useState({ loading: false, error: null, data: null });
+
+  // 1) On load, get the user + their visible reports
+  useEffect(() => {
+    apiGet("/api/reports")
+      .then((d) => {
+        setBoot({ loading: false, error: null, user: d.user, reports: d.reports });
+        if (d.reports.length) setSel(d.reports[0]);
+      })
+      .catch((e) =>
+        setBoot({ loading: false, error: e.message, user: null, reports: [] }));
+  }, []);
+
+  // 2) When a report is selected, fetch its parsed JSON
+  useEffect(() => {
+    if (!sel) return;
+    setReport({ loading: true, error: null, data: null });
+    apiGet(`/api/report/${sel.key}/${sel.clinic}`)
+      .then((d) => setReport({ loading: false, error: null, data: d }))
+      .catch((e) => setReport({ loading: false, error: e.message, data: null }));
+  }, [sel]);
+
+  const downloadXlsx = () => {
+    if (!sel) return;
+    window.location.href = `/api/report/${sel.key}/${sel.clinic}?format=xlsx`;
+  };
+
+  // ---- render states ----
+  if (boot.loading) {
+    return (
+      <div className="app">
+        <style>{CSS}</style>
+        <div className="centered">Loading reports…</div>
+      </div>
+    );
+  }
+  if (boot.error) {
+    return (
+      <div className="app">
+        <style>{CSS}</style>
+        <div className="centered error">
+          Couldn't load reports ({boot.error}).{" "}
+          <a href="/.auth/login/aad">Sign in</a>
+        </div>
+      </div>
+    );
+  }
+
+  const user = boot.user;
+  const accessLabel = user.isET
+    ? "Executive Team view"
+    : user.clinics.length === 1
+      ? `${user.clinics[0]} view`
+      : `${user.clinics.length} clinics`;
+
+  // Group reports for the rail: dedupe by key when ET (clinic === 'all')
+  const rail = boot.reports;
+
+  return (
+    <div className="app">
+      <style>{CSS}</style>
+      <header className="topbar">
+        <div className="brand">
+          <div className="brand-mark">A</div>
+          <div>
+            <div className="brand-name">Apollo Behavior Services</div>
+            <div className="brand-sub">Operations Reporting</div>
+          </div>
+        </div>
+        <div className="access-wrap">
+          <span className="access-tag">{accessLabel}</span>
+          <a className="signout" href="/logout">Sign out</a>
+        </div>
+      </header>
+
+      {rail.length === 0 ? (
+        <div className="centered">
+          No reports are shared with your account yet. Contact the operations team.
+        </div>
+      ) : (
+        <>
+          <nav className="report-rail">
+            {rail.map((r) => {
+              const active = sel && r.key === sel.key && r.clinic === sel.clinic;
+              return (
+                <button
+                  key={r.key + ":" + r.clinic}
+                  className={"report-card" + (active ? " active" : "")}
+                  onClick={() => setSel(r)}
+                >
+                  <div className="rc-title">{r.title}</div>
+                  <div className="rc-meta">
+                    {r.clinic === "all" ? "All clinics" : r.clinic}
+                  </div>
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="report-header">
+            <div>
+              <h1>{sel ? sel.title : ""} Report</h1>
+              <div className="rh-meta">
+                {sel && sel.clinic !== "all" ? sel.clinic + " · " : ""}Latest available
+              </div>
+            </div>
+            <button className="download" onClick={downloadXlsx} disabled={!report.data}>
+              ↓ Download .xlsx
+            </button>
+          </div>
+
+          {report.loading && <div className="centered">Loading {sel?.title}…</div>}
+          {report.error && (
+            <div className="centered error">Couldn't load this report ({report.error}).</div>
+          )}
+          {report.data && <ReportView report={report.data} key={sel.key + sel.clinic} />}
+        </>
+      )}
+
+      <footer className="foot">
+        Latest available reports, refreshed automatically. Figures are read-only.
+      </footer>
+    </div>
+  );
+}
+
+const CSS = `
+* { box-sizing: border-box; }
+.app {
+  --ink: #14181f;
+  --ink-soft: #5b6573;
+  --line: #e4e7ec;
+  --line-strong: #cdd2da;
+  --bg: #f7f8fa;
+  --panel: #ffffff;
+  --accent: #1f5f4f;
+  --accent-soft: #e8f1ee;
+  --neg: #b42318;
+  --total-bg: #f1f4f3;
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+  min-height: 100vh;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 24px; background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand-mark {
+  width: 34px; height: 34px; border-radius: 8px;
+  background: var(--accent); color: #fff;
+  display: grid; place-items: center; font-weight: 700; font-size: 18px;
+  font-family: Georgia, serif;
+}
+.brand-name { font-weight: 650; font-size: 14px; letter-spacing: -0.01em; }
+.brand-sub { color: var(--ink-soft); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+.access-tag {
+  font-size: 11px; font-weight: 600; color: var(--accent);
+  background: var(--accent-soft); padding: 5px 11px; border-radius: 999px;
+  letter-spacing: 0.02em;
+}
+.report-rail {
+  display: flex; gap: 10px; padding: 16px 24px 0; flex-wrap: wrap;
+}
+.report-card {
+  text-align: left; border: 1px solid var(--line-strong);
+  background: var(--panel); border-radius: 10px;
+  padding: 11px 16px; cursor: pointer; min-width: 190px;
+  transition: all .12s ease;
+}
+.report-card:hover { border-color: var(--accent); }
+.report-card.active {
+  border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent);
+  background: var(--accent-soft);
+}
+.rc-title { font-weight: 650; font-size: 13.5px; }
+.rc-meta { color: var(--ink-soft); font-size: 11px; margin-top: 2px; }
+
+.report-header {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  padding: 18px 24px 12px;
+}
+.report-header h1 {
+  margin: 0; font-size: 21px; font-weight: 680; letter-spacing: -0.02em;
+}
+.rh-meta { color: var(--ink-soft); font-size: 11.5px; margin-top: 3px; }
+.download {
+  border: 1px solid var(--accent); color: var(--accent); background: #fff;
+  padding: 8px 14px; border-radius: 8px; font-weight: 600; cursor: pointer;
+  font-size: 12.5px;
+}
+.download:hover { background: var(--accent); color: #fff; }
+
+.report { padding: 0 24px 24px; }
+.sheet-tabs {
+  display: flex; gap: 2px; border-bottom: 1px solid var(--line);
+  overflow-x: auto; margin-bottom: 0;
+}
+.sheet-tab {
+  border: none; background: none; cursor: pointer; white-space: nowrap;
+  padding: 9px 14px; font-size: 12.5px; color: var(--ink-soft);
+  border-bottom: 2px solid transparent; font-weight: 550;
+}
+.sheet-tab:hover { color: var(--ink); }
+.sheet-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 650; }
+
+.sheet { background: var(--panel); border: 1px solid var(--line);
+  border-top: none; border-radius: 0 0 10px 10px; padding: 18px 20px; }
+.sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.sheet-title { font-size: 15px; font-weight: 660; letter-spacing: -0.01em; }
+.sheet-sub { color: var(--ink-soft); font-size: 11.5px; margin-top: 2px; }
+.search {
+  border: 1px solid var(--line-strong); border-radius: 7px; padding: 6px 10px;
+  font-size: 12px; min-width: 180px; outline: none;
+}
+.search:focus { border-color: var(--accent); }
+
+.section-caption {
+  font-size: 11px; font-weight: 650; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--ink-soft);
+  margin: 18px 0 6px; padding-top: 8px;
+}
+.table-block { margin-bottom: 6px; }
+.table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+thead th {
+  position: sticky; top: 0; background: #fbfcfd; z-index: 1;
+  text-align: left; font-weight: 600; font-size: 11px;
+  color: var(--ink-soft); padding: 8px 12px; border-bottom: 1px solid var(--line-strong);
+  cursor: pointer; user-select: none; white-space: nowrap;
+}
+thead th.right { text-align: right; }
+thead th:hover { color: var(--ink); background: #f1f3f5; }
+.sort-arrow { font-size: 8px; margin-left: 4px; color: var(--accent); }
+tbody td {
+  padding: 7px 12px; border-bottom: 1px solid #f0f2f4; font-size: 12.5px;
+  white-space: nowrap;
+}
+tbody td.right { text-align: right; }
+tbody td.neg { color: var(--neg); }
+tbody tr:hover { background: #fafbfc; }
+tbody tr.total-row { background: var(--total-bg); font-weight: 650; }
+tbody tr.total-row td { border-top: 1px solid var(--line-strong); }
+.row-count { font-size: 11px; color: var(--ink-soft); margin-top: 6px; }
+.tab-chart-dot { color: var(--accent); font-size: 10px; margin-left: 5px; opacity: 0.7; }
+.chart-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 18px;
+}
+.chart-grid.on-sheet { margin-bottom: 4px; }
+.sheet-data-divider {
+  font-size: 11px; font-weight: 650; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--ink-soft);
+  margin: 22px 0 10px; padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.chart-card {
+  border: 1px solid var(--line); border-radius: 10px; padding: 14px 12px 8px;
+  background: var(--panel);
+}
+.chart-title {
+  font-size: 12.5px; font-weight: 650; margin: 0 4px 10px; letter-spacing: -0.01em;
+}
+.recharts-cartesian-axis-tick text { fill: var(--ink-soft); }
+@media (max-width: 900px) {
+  .chart-grid { grid-template-columns: 1fr; }
+}
+.foot {
+  padding: 16px 24px 28px; color: var(--ink-soft); font-size: 11px;
+  text-align: center;
+}
+@media (max-width: 640px) {
+  .report-header { flex-direction: column; align-items: flex-start; gap: 10px; }
+  tbody td, thead th { padding: 6px 9px; font-size: 11.5px; }
+}
+
+.centered { padding: 60px 24px; text-align: center; color: var(--ink-soft); font-size: 14px; }
+.centered.error { color: var(--neg); }
+.centered a { color: var(--accent); font-weight: 600; }
+.access-wrap { display: flex; align-items: center; gap: 14px; }
+.signout { font-size: 12px; color: var(--ink-soft); text-decoration: none; }
+.signout:hover { color: var(--ink); text-decoration: underline; }
+.download:disabled { opacity: .45; cursor: default; }
+`;
+
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(React.createElement(App));
+
+</script>
+</body>
+</html>
