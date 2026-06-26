@@ -15,9 +15,9 @@
 </head>
 <body>
 <div id="root">Loading…</div>
-<script type="text/babel">
+<script type="text/babel" data-presets="react">
 const { useState, useMemo, useRef, useEffect } = React;
-const { ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } = Recharts;
+// Recharts is accessed lazily inside ChartCard so a slow/failed CDN load never blanks the page.
 
 /* ----------------------------- helpers ----------------------------- */
 
@@ -308,6 +308,14 @@ const compactUSD = (n) => {
 };
 
 function ChartCard({ spec, sheetsByName }) {
+  const R = (typeof Recharts !== "undefined") ? Recharts : null;
+  if (!R) {
+    return React.createElement("div", {className:"chart-card"},
+      React.createElement("div", {className:"chart-title"}, spec.title),
+      React.createElement("div", {style:{color:"#5b6573",fontSize:"12px",padding:"8px 4px"}},
+        "Chart unavailable (visual library still loading) \u2014 data is in the tabs below."));
+  }
+  const { ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } = R;
   const data = useMemo(() => buildChartData(spec, sheetsByName), [spec, sheetsByName]);
   if (!data || !data.length) return null;
 
@@ -750,8 +758,11 @@ tbody tr.total-row td { border-top: 1px solid var(--line-strong); }
 `;
 
 
-const root = ReactDOM.createRoot(document.getElementById("root"));
-root.render(React.createElement(App));
+function boot() {
+  const root = ReactDOM.createRoot(document.getElementById("root"));
+  root.render(React.createElement(App));
+}
+boot();
 
 </script>
 </body>
