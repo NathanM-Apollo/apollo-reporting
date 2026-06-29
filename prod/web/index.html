@@ -62,6 +62,26 @@ const classifyColumn = (header, sampleVals) => {
   if (/\/ ?unit|rev ?\/|rpu|per unit|\$\/unit/.test(h)) return "num2";
   return "num";
 };
+
+// Classify a value by the TEXT LABEL sitting to its left (for key/value summary
+// rows that have no column header to go on). Returns a format kind.
+const classifyByLabel = (label, value) => {
+  const l = (label || "").toString().toLowerCase();
+  if (!isNum(value)) return "text";
+  // percentages / rates
+  if (/%|\brate\b|percent|as % of|share of|of l365|of revenue|margin/.test(l)) return "pct";
+  // day counts / ratios — number, not dollars
+  if (/\bdso\b|\bdays\b|ratio|per unit|\/ ?unit|rpu|count|# of|number of|lines|rows|sessions|units|headcount|claims/.test(l)) {
+    return /per unit|\/ ?unit|rpu/.test(l) ? "num2" : "num";
+  }
+  // money
+  if (/\bar\b|revenue|\brev\b|amount|collected|receivabl|outstanding|gross|net|balance|credit|charges|\$|dollar|billed|paid|cost|fee/.test(l)) {
+    return "usd";
+  }
+  // a fraction between -1 and 1 with decimals is almost certainly a rate
+  if (Math.abs(value) <= 1.0001 && value !== 0 && !Number.isInteger(value)) return "pct";
+  return Number.isInteger(value) ? "int" : "num";
+};
 const fmtUSD = n => (n < 0 ? "(" : "") + "$" + Math.abs(n).toLocaleString("en-US", {
   maximumFractionDigits: 0
 }) + (n < 0 ? ")" : "");
@@ -167,6 +187,21 @@ function columnKinds(header, rows) {
   });
 }
 
+/* A "key/value" table is one where the first column is text labels and the
+   remaining columns are mostly numbers, with no informative column headers
+   (e.g. the Summary tab's "Headline AR Totals"). In that shape, the header row
+   gives us nothing, so each value should be formatted from its ROW label. */
+function isKeyValueTable(header, rows) {
+  if (!header || header.length < 2 || header.length > 3) return false;
+  // Headers are non-informative if they're blank or look like data themselves
+  const headerLooksLikeData = header.slice(1).every(h => h === "" || h === null || isNum(h));
+  if (!headerLooksLikeData) return false;
+  const sample = rows.slice(0, 12);
+  if (!sample.length) return false;
+  const labelFirst = sample.filter(r => typeof r[0] === "string" && r.slice(1).some(isNum)).length;
+  return labelFirst >= Math.max(2, Math.floor(sample.length * 0.5));
+}
+
 /* ----------------------------- components ----------------------------- */
 
 function DataTable({
@@ -183,6 +218,7 @@ function DataTable({
     dir: 1
   });
   const kinds = useMemo(() => columnKinds(header, rows), [header, rows]);
+  const keyValue = useMemo(() => isKeyValueTable(header, rows), [header, rows]);
   const filtered = useMemo(() => {
     if (!query) return rows;
     const q = query.toLowerCase();
@@ -233,7 +269,8 @@ function DataTable({
     className: isTotalRow(r) ? "total-row" : ""
   }, header.map((_, c) => {
     const v = r[c];
-    const kind = kinds[c];
+    // In key/value tables, format each value by its row label (col 0)
+    const kind = keyValue && c > 0 ? classifyByLabel(r[0], v) : kinds[c];
     const right = ["usd", "pct", "int", "num", "num2"].includes(kind);
     const neg = isNum(v) && v < 0 && (kind === "usd" || kind === "num");
     return /*#__PURE__*/React.createElement("td", {
