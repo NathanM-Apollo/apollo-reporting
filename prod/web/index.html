@@ -190,16 +190,22 @@ function columnKinds(header, rows) {
 /* A "key/value" table is one where the first column is text labels and the
    remaining columns are mostly numbers, with no informative column headers
    (e.g. the Summary tab's "Headline AR Totals"). In that shape, the header row
-   gives us nothing, so each value should be formatted from its ROW label. */
+   gives us nothing, so each value should be formatted from its ROW label.
+   Note: parseSheet stringifies header cells, so a numeric header arrives as a
+   numeric STRING like "3807326.89" — detect that too, and the header is really
+   the first data row. */
+const looksNumericString = h => h !== "" && h !== null && h !== undefined && (isNum(h) || typeof h === "string" && h.trim() !== "" && isFinite(Number(h)));
 function isKeyValueTable(header, rows) {
   if (!header || header.length < 2 || header.length > 3) return false;
-  // Headers are non-informative if they're blank or look like data themselves
-  const headerLooksLikeData = header.slice(1).every(h => h === "" || h === null || isNum(h));
+  // Header's non-label columns are blank or numeric (incl. numeric strings)
+  const headerLooksLikeData = header.slice(1).every(h => h === "" || h === null || looksNumericString(h));
   if (!headerLooksLikeData) return false;
-  const sample = rows.slice(0, 12);
-  if (!sample.length) return false;
-  const labelFirst = sample.filter(r => typeof r[0] === "string" && r.slice(1).some(isNum)).length;
-  return labelFirst >= Math.max(2, Math.floor(sample.length * 0.5));
+  // First header cell should be a text label (not itself a number)
+  if (looksNumericString(header[0])) return false;
+  // Combine header-as-row + body for the sample check
+  const combined = [header, ...rows].slice(0, 13);
+  const labelFirst = combined.filter(r => typeof r[0] === "string" && r.slice(1).some(looksNumericString)).length;
+  return labelFirst >= Math.max(2, Math.floor(combined.length * 0.5));
 }
 
 /* ----------------------------- components ----------------------------- */
@@ -219,11 +225,19 @@ function DataTable({
   });
   const kinds = useMemo(() => columnKinds(header, rows), [header, rows]);
   const keyValue = useMemo(() => isKeyValueTable(header, rows), [header, rows]);
+
+  // For key/value tables, the parser consumed the first data row as the header.
+  // Fold it back in, and coerce any numeric-string cells to real numbers.
+  const effectiveRows = useMemo(() => {
+    const coerce = r => r.map((cell, i) => i > 0 && typeof cell === "string" && cell.trim() !== "" && isFinite(Number(cell)) ? Number(cell) : cell);
+    if (keyValue) return [header, ...rows].map(coerce);
+    return rows;
+  }, [keyValue, header, rows]);
   const filtered = useMemo(() => {
-    if (!query) return rows;
+    if (!query) return effectiveRows;
     const q = query.toLowerCase();
-    return rows.filter(r => r.some(c => c !== null && c !== undefined && String(c).toLowerCase().includes(q)));
-  }, [rows, query]);
+    return effectiveRows.filter(r => r.some(c => c !== null && c !== undefined && String(c).toLowerCase().includes(q)));
+  }, [effectiveRows, query]);
   const sorted = useMemo(() => {
     if (sort.col === null) return filtered;
     const c = sort.col;
@@ -249,7 +263,7 @@ function DataTable({
     className: "section-caption"
   }, caption), /*#__PURE__*/React.createElement("div", {
     className: "table-scroll"
-  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, header.map((h, c) => {
+  }, /*#__PURE__*/React.createElement("table", null, !keyValue && /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, header.map((h, c) => {
     const right = ["usd", "pct", "int", "num", "num2"].includes(kinds[c]);
     return /*#__PURE__*/React.createElement("th", {
       key: c,
