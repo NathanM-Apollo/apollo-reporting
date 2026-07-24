@@ -39,6 +39,7 @@ REPORT_CATALOG = {
     "rev":         {"title": "Daily Revenue",       "scope": "all", "folder": "outputs/revenue"},
     "supervision": {"title": "Supervision Ratio",   "scope": "all", "folder": "outputs/supervision"},
     "bcba":        {"title": "BCBA Billing",        "scope": "all", "folder": "outputs/bcba-billing"},
+    "direct-labor-margin": {"title": "Direct Labor Margin", "scope": "all", "folder": "outputs/direct-labor-margin"},
 }
 
 CONTAINER = "apollo-reports"
