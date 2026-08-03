@@ -40,6 +40,7 @@ REPORT_CATALOG = {
     "supervision": {"title": "Supervision Ratio",   "scope": "all", "folder": "outputs/supervision"},
     "bcba":        {"title": "BCBA Billing",        "scope": "all", "folder": "outputs/bcba-billing"},
     "direct-labor-margin": {"title": "Direct Labor Margin", "scope": "all", "folder": "outputs/direct-labor-margin"},
+    "parent-training":     {"title": "Parent Training",     "scope": "all", "folder": "outputs/parent-training"},
 }
 
 CONTAINER = "apollo-reports"
