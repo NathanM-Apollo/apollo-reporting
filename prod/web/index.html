@@ -53,6 +53,7 @@ const classifyColumn = (header, sampleVals) => {
   const allBetween0and1 = nums.every(n => n >= -1.0001 && n <= 1.0001);
   const someFractional = nums.some(n => Math.abs(n) > 0 && Math.abs(n) < 1);
   if (/%|rate|pct|share|percent|of revenue|of payor/.test(h)) return "pct";
+  if (/\bhrs?\b|\bhours?\b/.test(h)) return "num";
   if (allBetween0and1 && someFractional && nums.length > 1) return "pct";
   if (/\$|revenue|ar|amount|collected|receivabl|outstanding|gross|net|balance|charges|rev\b|dso/.test(h)) {
     if (/dso|days|ratio|\/ ?unit|rpu|per unit/.test(h)) return "num";
