@@ -46,10 +46,18 @@ const fmtDate = (v, withTime = false) => {
 };
 
 // Decide how a numeric cell should be formatted based on its column's name + value range.
-const classifyColumn = (header, sampleVals) => {
+const classifyColumn = (header, sampleVals, caption) => {
   const h = (header || "").toString().toLowerCase();
+  const cap = (caption || "").toString().toLowerCase();
   const nums = sampleVals.filter(isNum);
   if (!nums.length) return "text";
+  // Trailing-window columns (L7, L14, L30, ...) inherit their table's type
+  // from the caption, so an out-of-range value (e.g. -9.1 = -910%) can't flip
+  // the whole column out of percent formatting.
+  if (/^l\d+$/.test(h)) {
+    if (/margin|%/.test(cap)) return "pct";
+    if (/revenue|cost|labor|\$/.test(cap)) return "usd";
+  }
   const allBetween0and1 = nums.every(n => n >= -1.0001 && n <= 1.0001);
   const someFractional = nums.some(n => Math.abs(n) > 0 && Math.abs(n) < 1);
   if (/%|rate|pct|share|percent|of revenue|of payor/.test(h)) return "pct";
@@ -180,11 +188,11 @@ function parseSheet(rows) {
 }
 
 /* Pre-compute column kinds for a table */
-function columnKinds(header, rows) {
+function columnKinds(header, rows, caption) {
   if (!header) return [];
   return header.map((h, c) => {
     const sample = rows.slice(0, 40).map(r => r[c]);
-    return classifyColumn(h, sample);
+    return classifyColumn(h, sample, caption);
   });
 }
 
@@ -224,7 +232,7 @@ function DataTable({
     col: null,
     dir: 1
   });
-  const kinds = useMemo(() => columnKinds(header, rows), [header, rows]);
+  const kinds = useMemo(() => columnKinds(header, rows, caption), [header, rows, caption]);
   const keyValue = useMemo(() => isKeyValueTable(header, rows), [header, rows]);
 
   // For key/value tables, the parser consumed the first data row as the header.
