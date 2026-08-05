@@ -221,7 +221,8 @@ function isKeyValueTable(header, rows) {
 
 function DataTable({
   table,
-  query
+  query,
+  sheetName
 }) {
   const {
     header,
@@ -232,7 +233,7 @@ function DataTable({
     col: null,
     dir: 1
   });
-  const kinds = useMemo(() => columnKinds(header, rows, caption), [header, rows, caption]);
+  const kinds = useMemo(() => columnKinds(header, rows, caption || sheetName), [header, rows, caption, sheetName]);
   const keyValue = useMemo(() => isKeyValueTable(header, rows), [header, rows]);
 
   // For key/value tables, the parser consumed the first data row as the header.
@@ -544,7 +545,8 @@ function SheetView({
   }, "Data"), parsed.tables.map((t, i) => /*#__PURE__*/React.createElement(DataTable, {
     key: i,
     table: t,
-    query: query
+    query: query,
+    sheetName: sheet.name
   })));
 }
 function ReportView({
