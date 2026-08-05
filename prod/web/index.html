@@ -55,8 +55,14 @@ const classifyColumn = (header, sampleVals, caption) => {
   // from the caption, so an out-of-range value (e.g. -9.1 = -910%) can't flip
   // the whole column out of percent formatting.
   if (/^l\d+$/.test(h)) {
-    if (/margin|%/.test(cap)) return "pct";
+    // Prefer the table's own caption. Revenue/Cost captions win over a generic
+    // sheet-name fallback (the sheet is named "...Margin", so margin is only
+    // the answer when NOTHING more specific matches). Also cross-check value
+    // magnitude: $ figures run large, margin fractions stay small.
     if (/revenue|cost|labor|\$/.test(cap)) return "usd";
+    if (/margin/.test(cap) || /%/.test(cap)) return "pct";
+    const maxAbs = Math.max.apply(null, nums.map(function(n){return Math.abs(n);}));
+    return maxAbs > 3 ? "usd" : "pct";
   }
   const allBetween0and1 = nums.every(n => n >= -1.0001 && n <= 1.0001);
   const someFractional = nums.some(n => Math.abs(n) > 0 && Math.abs(n) < 1);
