@@ -222,16 +222,86 @@ function isKeyValueTable(header, rows) {
 
 /* ----------------------------- components ----------------------------- */
 
+/* ----------------------------- sparklines ----------------------------- */
+function collapseSparkStrips(header, rows) {
+  if (!header) return { header, rows, sparkCols: {} };
+  const spark = /^L\d+\s*trend$/i;
+  const starts = [];
+  for (let c = 0; c < header.length; c++) {
+    if (header[c] && spark.test(String(header[c]).trim())) starts.push(c);
+  }
+  if (!starts.length) return { header, rows, sparkCols: {} };
+  const strips = starts.map((c0) => {
+    let end = header.length;
+    for (let c = c0 + 1; c < header.length; c++) {
+      const h = header[c];
+      if (h !== null && h !== undefined && String(h).trim() !== "") { end = c; break; }
+    }
+    return { start: c0, end, label: String(header[c0]).trim() };
+  });
+  const drop = new Set();
+  strips.forEach(st => { for (let c = st.start + 1; c < st.end; c++) drop.add(c); });
+  const newHeader = [];
+  const colMap = [];
+  for (let c = 0; c < header.length; c++) {
+    if (drop.has(c)) continue;
+    const st = strips.find(x => x.start === c);
+    if (st) { newHeader.push(st.label); colMap.push({ spark: st }); }
+    else { newHeader.push(header[c]); colMap.push({ orig: c }); }
+  }
+  const sparkCols = {};
+  newHeader.forEach((h, i) => { if (colMap[i].spark) sparkCols[i] = true; });
+  const newRows = rows.map(r => colMap.map(m => {
+    if (m.spark) {
+      const vals = [];
+      for (let c = m.spark.start; c < m.spark.end; c++) {
+        const v = r[c];
+        vals.push(typeof v === "number" ? v : (v === "" || v == null ? null : Number(v)));
+      }
+      return { __spark: vals };
+    }
+    return r[m.orig];
+  }));
+  return { header: newHeader, rows: newRows, sparkCols };
+}
+
+function Sparkline({ values }) {
+  const pts = (values || []).map(v => (typeof v === "number" && isFinite(v)) ? v : null);
+  const real = pts.filter(v => v !== null);
+  if (real.length < 2) return React.createElement("span", { className: "spark-empty" }, "\u2014");
+  const W = 110, H = 26, pad = 3;
+  const min = Math.min(...real), max = Math.max(...real);
+  const span = (max - min) || 1;
+  const n = pts.length;
+  const x = i => pad + (i * (W - 2 * pad)) / (n - 1);
+  const y = v => H - pad - ((v - min) / span) * (H - 2 * pad);
+  let d = "", started = false;
+  pts.forEach((v, i) => {
+    if (v === null) { started = false; return; }
+    d += (started ? " L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1);
+    started = true;
+  });
+  const last = real[real.length - 1];
+  const color = last < 0.40 ? "#C00000" : (last < 0.55 ? "#ED7D31" : "#548235");
+  let lastIdx = -1; for (let i = pts.length - 1; i >= 0; i--) { if (pts[i] !== null) { lastIdx = i; break; } }
+  return React.createElement("svg", { className: "spark", width: W, height: H, viewBox: "0 0 " + W + " " + H },
+    React.createElement("path", { d, fill: "none", stroke: color, strokeWidth: 1.5, strokeLinejoin: "round", strokeLinecap: "round" }),
+    lastIdx >= 0 && React.createElement("circle", { cx: x(lastIdx), cy: y(pts[lastIdx]), r: 2.2, fill: color })
+  );
+}
+
 function DataTable({
   table,
   query,
   sheetName
 }) {
   const {
-    header,
-    rows,
+    header: rawHeader,
+    rows: rawRows,
     caption
   } = table;
+  const { header, rows } = React.useMemo(
+    () => collapseSparkStrips(rawHeader, rawRows), [rawHeader, rawRows]);
   const [sort, setSort] = useState({
     col: null,
     dir: 1
@@ -297,6 +367,10 @@ function DataTable({
   }, header.map((_, c) => {
     const v = r[c];
     // In key/value tables, format each value by its row label (col 0)
+    if (v && typeof v === "object" && Array.isArray(v.__spark)) {
+      return /*#__PURE__*/React.createElement("td", { key: c, className: "spark-cell" },
+        /*#__PURE__*/React.createElement(Sparkline, { values: v.__spark }));
+    }
     const kind = keyValue && c > 0 ? classifyByLabel(r[0], v) : kinds[c];
     const right = ["usd", "pct", "int", "num", "num2"].includes(kind);
     const neg = isNum(v) && v < 0 && (kind === "usd" || kind === "num");
@@ -825,6 +899,9 @@ const CSS = `
 }
 .search:focus { border-color: var(--accent); }
 
+.spark-cell { padding: 2px 8px; vertical-align: middle; }
+.spark { display: block; }
+.spark-empty { color: #b0b6bd; }
 .section-caption {
   font-size: 11px; font-weight: 650; text-transform: uppercase;
   letter-spacing: 0.06em; color: var(--ink-soft);
