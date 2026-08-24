@@ -58,6 +58,7 @@ const classifyColumn = (header, sampleVals, caption) => {
   // "L7 $/day" -> dollars; plain "L7" -> percent. No caption/heuristic needed.
   if (/\bhrs?\b|\bhours?\b/.test(h)) return "num";
   if (/units|sessions|count|#/.test(h)) return "int";
+  if (/revenue|\brev\b|\bar\b|amount|collected|receivabl|outstanding|gross|net|balance|charges/.test(h)) return "usd";
   if (/^l\d+\b/.test(h)) {
     if (/\$|\/day/.test(h)) return "usd";
     return "pct";
