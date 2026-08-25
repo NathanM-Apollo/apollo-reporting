@@ -433,13 +433,26 @@ function buildChartData(spec, sheetsByName) {
   const seriesVals = spec.series.map(s => readRange(sheet.rows, s.range));
   const n = cats ? cats.length : seriesVals[0] ? seriesVals[0].length : 0;
   const data = [];
+  const normalizeToPct = spec.grouping === "percentStacked";
   for (let i = 0; i < n; i++) {
     const row = {
       __cat: cats ? cats[i] : i + 1
     };
+    const raw = [];
+    let rowSum = 0;
     spec.series.forEach((s, si) => {
       const v = seriesVals[si][i];
-      row[s.name] = typeof v === "number" ? v : v == null ? null : Number(v);
+      const num = typeof v === "number" ? v : v == null ? null : Number(v);
+      raw.push(num);
+      if (typeof num === "number" && isFinite(num)) rowSum += num;
+    });
+    spec.series.forEach((s, si) => {
+      const num = raw[si];
+      if (normalizeToPct && typeof num === "number" && rowSum > 0) {
+        row[s.name] = num / rowSum;
+      } else {
+        row[s.name] = num;
+      }
     });
     data.push(row);
   }
