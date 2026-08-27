@@ -41,6 +41,7 @@ REPORT_CATALOG = {
     "bcba":        {"title": "BCBA Billing",        "scope": "all", "folder": "outputs/bcba-billing"},
     "direct-labor-margin": {"title": "Direct Labor Margin", "scope": "all", "folder": "outputs/direct-labor-margin"},
     "parent-training":     {"title": "Parent Training",     "scope": "all", "folder": "outputs/parent-training"},
+    "group-rate":          {"title": "RBT Group Hour Rate", "scope": "all", "folder": "outputs/group-rate"},
 }
 
 CONTAINER = "apollo-reports"
