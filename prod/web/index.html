@@ -56,7 +56,7 @@ const classifyColumn = (header, sampleVals, caption) => {
   // the whole column out of percent formatting.
   // Trailing-window columns: the header itself carries the type.
   // "L7 $/day" -> dollars; plain "L7" -> percent. No caption/heuristic needed.
-  if (/\bhrs?\b|\bhours?\b/.test(h)) return "num";
+  if (/\bhrs?\b|\bhours?\b/.test(h) && !/%|rate|pct|share|percent/.test(h)) return "num";
   if (/units|sessions|count|#/.test(h)) return "int";
   if (/revenue|\brev\b|\bar\b|amount|collected|receivabl|outstanding|gross|net|balance|charges/.test(h)) return "usd";
   if (/revenue|\brev\b|\bar\b|amount|collected|receivabl|outstanding|gross|net|balance|charges/.test(h)) return "usd";
