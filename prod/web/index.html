@@ -376,9 +376,14 @@ function DataTable({
     const kind = keyValue && c > 0 ? classifyByLabel(r[0], v) : kinds[c];
     const right = ["usd", "pct", "int", "num", "num2"].includes(kind);
     const neg = isNum(v) && v < 0 && (kind === "usd" || kind === "num");
+    let band = "";
+    if (window.__activeReportKey === "group-rate" && kind === "pct" && isNum(v)) {
+      if (v >= 0.06) band = "band-red ";
+      else if (v >= 0.03) band = "band-amber ";
+    }
     return /*#__PURE__*/React.createElement("td", {
       key: c,
-      className: (right ? "right " : "") + (neg ? "neg" : "")
+      className: band + (right ? "right " : "") + (neg ? "neg" : "")
     }, fmtCell(v, kind));
   })))))), query && /*#__PURE__*/React.createElement("div", {
     className: "row-count"
@@ -724,6 +729,7 @@ function App() {
   // 2) When a report is selected, fetch its parsed JSON
   useEffect(() => {
     if (!sel) return;
+    window.__activeReportKey = sel.key;
     setReport({
       loading: true,
       error: null,
@@ -940,6 +946,8 @@ tbody td {
 }
 tbody td.right { text-align: right; }
 tbody td.neg { color: var(--neg); }
+tbody td.band-red { background: #FFC7CE; color: #9C0006; font-weight: 600; }
+tbody td.band-amber { background: #FFEB9C; color: #9C6500; }
 tbody tr:hover { background: #fafbfc; }
 tbody tr.total-row { background: var(--total-bg); font-weight: 650; }
 tbody tr.total-row td { border-top: 1px solid var(--line-strong); }
