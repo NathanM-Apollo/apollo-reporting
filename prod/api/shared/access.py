@@ -73,6 +73,11 @@ GROUPS = {
         "reports": {"ar", "rev"},
         "clinic_scoped": False,
     },
+      # Clinical Excellence: the four clinical reports, full data, no filtering.
+    "apollo_clinical": {
+        "reports": CLINIC_REPORTS,
+        "clinic_scoped": False,
+    },
     # Clinic staff: one role for all clinics. WHICH clinic a user belongs to
     # comes from config/clinic_access.csv (see header comment).
     "apollo_clinic": {
