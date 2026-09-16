@@ -160,7 +160,10 @@ BCBA_TAB_CODE_TO_CLINIC = {
 
 def _norm(s) -> str:
     return str(s).strip().casefold()
-
+def _norm_email(s) -> str:
+    # Treat the tenant's fallback domain as identical to the primary domain,
+    # so one clinic_access.csv row covers both login variants.
+    return _norm(s).replace("@apollobehavior.onmicrosoft.com", "@apollobehavior.com")
 
 def _principal_from_header(header_val: str) -> dict:
     if not header_val:
