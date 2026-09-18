@@ -50,7 +50,7 @@ REPORT_CATALOG = {
     "direct-labor-margin": {"title": "Direct Labor Margin", "scope": "all", "folder": "outputs/direct-labor-margin"},
     "parent-training":     {"title": "Parent Training",     "scope": "all", "folder": "outputs/parent-training"},
     "group-rate":          {"title": "RBT Group Hour Rate", "scope": "all", "folder": "outputs/group-rate"},
-    "turnover":            {"title": "RBT Turnover",        "scope": "all", "folder": "outputs/turnover"},
+    "turnover":            {"title": "RBTs and Turnover",        "scope": "all", "folder": "outputs/turnover"},
 }
 
 CONTAINER = "apollo-reports"

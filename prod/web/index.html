@@ -529,8 +529,9 @@ function ChartCard({
   if (!data || !data.length) return null;
   const pct = isPct(spec);
   const autoPct = pct && window.__activeReportKey === "turnover";
-  const yFmt = pct ? v => (v * 100).toFixed(0) + "%" : compactUSD;
-  const tipFmt = pct ? v => v == null ? "" : (v * 100).toFixed(1) + "%" : v => v == null ? "" : isNum(v) && Math.abs(v) >= 100 ? fmtUSD(v) : fmtNum2(v);
+  const plainNum = !pct && window.__activeReportKey === "turnover";
+  const yFmt = pct ? v => (v * 100).toFixed(0) + "%" : plainNum ? fmtInt : compactUSD;
+  const tipFmt = pct ? v => v == null ? "" : (v * 100).toFixed(1) + "%" : plainNum ? v => v == null ? "" : fmtInt(v) : v => v == null ? "" : isNum(v) && Math.abs(v) >= 100 ? fmtUSD(v) : fmtNum2(v);
   const many = data.length > 60; // dense time series -> hide dots
   const manySeries = spec.series.length > 6;
   return /*#__PURE__*/React.createElement("div", {
