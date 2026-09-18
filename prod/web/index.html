@@ -394,11 +394,18 @@ function DataTable({
       if (v >= 0.06) band = "band-red ";
       else if (v >= 0.03) band = "band-amber ";
     }
+    if (window.__activeReportKey === "turnover" && sheetName === "Center Comparison") {
+      const pv = isNum(v) ? v : typeof v === "string" && /^-?\d+(\.\d+)?%$/.test(v.trim()) ? parseFloat(v) / 100 : null;
+      if (pv !== null) {
+        if (pv >= 0.08334) band = "band-red ";
+        else if (pv >= 0.0666) band = "band-amber ";
+      }
+    }
     return /*#__PURE__*/React.createElement("td", {
       key: c,
       className: band + (right ? "right " : "") + (neg ? "neg" : "")
     }, fmtCell(v, kind));
-  })))))), (query || picks && picks.length) && /*#__PURE__*/React.createElement("div", {
+  })))))), (query || picks && picks.length > 0) && /*#__PURE__*/React.createElement("div", {
     className: "row-count"
   }, sorted.length, " of ", rows.length, " rows"));
 }
