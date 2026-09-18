@@ -322,7 +322,7 @@ function DataTable({
   }, [keyValue, header, rows]);
   const filtered = useMemo(() => {
     let out = effectiveRows;
-    if (facetName && picks && picks.length) {
+    if (header && facetName && picks && picks.length) {
       const ci = header.findIndex(h => String(h).trim().toLowerCase() === facetName.trim().toLowerCase());
       if (ci >= 0) {
         const want = {};
