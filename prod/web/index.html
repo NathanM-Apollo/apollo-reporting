@@ -294,6 +294,7 @@ function Sparkline({ values }) {
 
 function DataTable({
   table,
+  tableIndex,
   query,
   picks,
   facetName,
@@ -394,9 +395,9 @@ function DataTable({
       if (v >= 0.06) band = "band-red ";
       else if (v >= 0.03) band = "band-amber ";
     }
-    if (window.__activeReportKey === "turnover" && sheetName === "Center Comparison") {
-      const pv = isNum(v) ? v : typeof v === "string" && /^-?\d+(\.\d+)?%$/.test(v.trim()) ? parseFloat(v) / 100 : null;
-      if (pv !== null) {
+    if (window.__activeReportKey === "turnover" && sheetName === "Center Comparison" && tableIndex === 0 && c > 0) {
+      const pv = isNum(v) ? v : typeof v === "string" ? parseFloat(v) / 100 : null;
+      if (pv !== null && !isNaN(pv)) {
         if (pv >= 0.08334) band = "band-red ";
         else if (pv >= 0.0666) band = "band-amber ";
       }
@@ -743,6 +744,7 @@ function SheetView({
   }, "Data"), parsed.tables.map((t, i) => /*#__PURE__*/React.createElement(DataTable, {
     key: i,
     table: t,
+    tableIndex: i,
     query: query,
     picks: picks,
     facetName: facet ? facet.name : null,
