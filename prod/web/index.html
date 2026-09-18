@@ -295,6 +295,8 @@ function Sparkline({ values }) {
 function DataTable({
   table,
   query,
+  picks,
+  facetName,
   sheetName
 }) {
   const {
@@ -319,10 +321,21 @@ function DataTable({
     return rows;
   }, [keyValue, header, rows]);
   const filtered = useMemo(() => {
-    if (!query) return effectiveRows;
-    const q = query.toLowerCase();
-    return effectiveRows.filter(r => r.some(c => c !== null && c !== undefined && String(c).toLowerCase().includes(q)));
-  }, [effectiveRows, query]);
+    let out = effectiveRows;
+    if (facetName && picks && picks.length) {
+      const ci = header.findIndex(h => String(h).trim().toLowerCase() === facetName.trim().toLowerCase());
+      if (ci >= 0) {
+        const want = {};
+        picks.forEach(x => want[String(x)] = 1);
+        out = out.filter(r => want[String(r[ci])]);
+      }
+    }
+    if (query) {
+      const q = query.toLowerCase();
+      out = out.filter(r => r.some(c => c !== null && c !== undefined && String(c).toLowerCase().includes(q)));
+    }
+    return out;
+  }, [effectiveRows, query, picks, facetName, header]);
   const sorted = useMemo(() => {
     if (sort.col === null) return filtered;
     const c = sort.col;
@@ -385,7 +398,7 @@ function DataTable({
       key: c,
       className: band + (right ? "right " : "") + (neg ? "neg" : "")
     }, fmtCell(v, kind));
-  })))))), query && /*#__PURE__*/React.createElement("div", {
+  })))))), (query || picks && picks.length) && /*#__PURE__*/React.createElement("div", {
     className: "row-count"
   }, sorted.length, " of ", rows.length, " rows"));
 }
@@ -610,14 +623,88 @@ function ChartCard({
     connectNulls: true
   })))));
 }
+function MultiSelect({
+  label,
+  options,
+  selected,
+  onChange
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = React.useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = e => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+  const none = selected.length === 0;
+  const text = none ? "All " + label.toLowerCase() + "s" : selected.length === 1 ? selected[0] : selected.length + " " + label.toLowerCase() + "s";
+  const toggle = v => {
+    const set = new Set(selected);
+    if (set.has(v)) set.delete(v);else set.add(v);
+    onChange(options.filter(o => set.has(o)));
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    className: "ms",
+    ref: ref
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "ms-btn" + (none ? "" : " active"),
+    onClick: () => setOpen(o => !o)
+  }, /*#__PURE__*/React.createElement("span", null, text), /*#__PURE__*/React.createElement("span", {
+    className: "ms-caret"
+  }, "\u25be")), open && /*#__PURE__*/React.createElement("div", {
+    className: "ms-panel"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "ms-actions"
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => onChange(options.slice())
+  }, "Select all"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => onChange([])
+  }, "Clear")), /*#__PURE__*/React.createElement("div", {
+    className: "ms-list"
+  }, options.map(o => /*#__PURE__*/React.createElement("label", {
+    key: o,
+    className: "ms-item"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: selected.indexOf(o) >= 0,
+    onChange: () => toggle(o)
+  }), /*#__PURE__*/React.createElement("span", null, o))))));
+}
 function SheetView({
   sheet,
   charts,
   sheetsByName
 }) {
   const [query, setQuery] = useState("");
+  const [picks, setPicks] = useState([]);
   const parsed = useMemo(() => parseSheet(sheet.rows), [sheet]);
   const bigTable = sheet.rows.length > 25;
+  const facet = useMemo(() => {
+    const NAMES = ["center", "clinic"];
+    for (const t of parsed.tables) {
+      if (!t.header) continue;
+      const idx = t.header.findIndex(h => NAMES.indexOf(String(h).trim().toLowerCase()) >= 0);
+      if (idx < 0) continue;
+      const vals = [], seen = {};
+      t.rows.forEach(r => {
+        const v = r[idx];
+        if (v === null || v === undefined || v === "") return;
+        const k = String(v);
+        if (!seen[k]) { seen[k] = 1; vals.push(k); }
+      });
+      if (vals.length > 1) return {
+        name: String(t.header[idx]).trim(),
+        values: vals.sort((a, b) => a.localeCompare(b))
+      };
+    }
+    return null;
+  }, [parsed]);
   const sheetCharts = (charts || []).filter(c => c.sheet === sheet.name);
   return /*#__PURE__*/React.createElement("div", {
     className: "sheet"
@@ -626,12 +713,19 @@ function SheetView({
   }, /*#__PURE__*/React.createElement("div", null, parsed.titles.map((t, i) => /*#__PURE__*/React.createElement("div", {
     key: i,
     className: i === 0 ? "sheet-title" : "sheet-sub"
-  }, t))), bigTable && /*#__PURE__*/React.createElement("input", {
+  }, t))), (facet || bigTable) && /*#__PURE__*/React.createElement("div", {
+    className: "sheet-tools"
+  }, facet && /*#__PURE__*/React.createElement(MultiSelect, {
+    label: facet.name,
+    options: facet.values,
+    selected: picks,
+    onChange: setPicks
+  }), bigTable && /*#__PURE__*/React.createElement("input", {
     className: "search",
     placeholder: "Filter rows…",
     value: query,
     onChange: e => setQuery(e.target.value)
-  })), sheetCharts.length > 0 && /*#__PURE__*/React.createElement("div", {
+  }))), sheetCharts.length > 0 && /*#__PURE__*/React.createElement("div", {
     className: "chart-grid on-sheet"
   }, sheetCharts.map((spec, i) => /*#__PURE__*/React.createElement(ChartCard, {
     key: i,
@@ -643,6 +737,8 @@ function SheetView({
     key: i,
     table: t,
     query: query,
+    picks: picks,
+    facetName: facet ? facet.name : null,
     sheetName: sheet.name
   })));
 }
@@ -919,6 +1015,40 @@ const CSS = `
   font-size: 12px; min-width: 180px; outline: none;
 }
 .search:focus { border-color: var(--accent); }
+
+.sheet-tools { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.ms { position: relative; }
+.ms-btn {
+  display: inline-flex; align-items: center; justify-content: space-between; gap: 8px;
+  border: 1px solid var(--line-strong); border-radius: 7px; padding: 6px 10px;
+  font-size: 12px; font-family: inherit; color: inherit; background: #fff;
+  cursor: pointer; min-width: 150px;
+}
+.ms-btn:hover { border-color: var(--accent); }
+.ms-btn.active { border-color: var(--accent); font-weight: 600; }
+.ms-caret { font-size: 9px; color: var(--ink-soft); }
+.ms-panel {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 40;
+  width: 240px; padding: 6px; background: #fff;
+  border: 1px solid var(--line-strong); border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.10);
+}
+.ms-actions {
+  display: flex; gap: 10px; padding: 2px 4px 6px;
+  border-bottom: 1px solid #e6e9ec; margin-bottom: 4px;
+}
+.ms-actions button {
+  border: none; background: none; padding: 0; cursor: pointer;
+  font-size: 11px; font-family: inherit; color: var(--accent);
+}
+.ms-actions button:hover { text-decoration: underline; }
+.ms-list { max-height: 260px; overflow-y: auto; }
+.ms-item {
+  display: flex; align-items: center; gap: 8px; padding: 4px 6px;
+  font-size: 12px; border-radius: 5px; cursor: pointer;
+}
+.ms-item:hover { background: #f4f6f8; }
+.ms-item input { margin: 0; cursor: pointer; }
 
 .spark-cell { padding: 2px 8px; vertical-align: middle; }
 .spark { display: block; }
