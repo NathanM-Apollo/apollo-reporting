@@ -49,6 +49,7 @@ REPORT_CATALOG = {
     "bcba":        {"title": "BCBA Billing",        "scope": "all", "folder": "outputs/bcba-billing"},
     "direct-labor-margin": {"title": "Direct Labor Margin", "scope": "all", "folder": "outputs/direct-labor-margin"},
     "parent-training":     {"title": "Parent Training",     "scope": "all", "folder": "outputs/parent-training"},
+    "client-roster":   {"title": "Client & Insurance Roster", "scope": "all", "folder": "outputs/client-roster"},
     "group-rate":          {"title": "RBT Group Hour Rate", "scope": "all", "folder": "outputs/group-rate"},
     "turnover":            {"title": "RBTs and Turnover",        "scope": "all", "folder": "outputs/turnover"},
 }
@@ -71,7 +72,7 @@ GROUPS = {
     # Revenue Cycle Management: only these reports today.
     # To grant more later, add keys to this set (e.g. add "supervision").
     "apollo_rcm": {
-        "reports": {"ar", "rev"},
+        "reports": {"ar", "rev", "client-roster"},
         "clinic_scoped": False,
     },
       # Clinical Excellence: the four clinical reports, full data, no filtering.
