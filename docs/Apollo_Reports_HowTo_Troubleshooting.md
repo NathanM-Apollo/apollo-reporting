@@ -365,11 +365,25 @@ Seen 9/16/2026: a one-line payor fix also removed the AR trend history, changed 
 
 ---
 
+## Symptom: Failed email says "No such file or directory: ... 71c6566794fd48d0937f540fbae9ca05.csv"
+
+Seen 9/16 and 10/8 to 10/11/2026. The running `financial-daily` is an old copy that looks for a billing file by a name that no longer exists. v11 and v12 don't reference that file.
+
+**Fix:** redeploy `~/apollo-reports-deploy-v12.zip`, then confirm with the host's function list:
+
+```bash
+KEY=$(az rest --method POST --uri "https://management.azure.com/subscriptions/$(az account show --query id -o tsv)/resourceGroups/apollo-reports-rg/providers/Microsoft.Web/sites/apollo-financial-reports-func/host/default/listKeys?api-version=2022-03-01" --query masterKey -o tsv); curl -s -H "x-functions-key: $KEY" https://apollo-financial-reports-func.azurewebsites.net/admin/functions | python3 -c "import sys,json; [print(f['name'], f['config']['bindings'][0].get('schedule', f['config']['bindings'][0].get('type'))) for f in json.load(sys.stdin)]"
+```
+
+Expected: `financial-daily 0 30 7 * * 1-5` and `unconverted-notes blobTrigger`. A schedule of `0 30 7 * * *` (every day) means the old copy is still loaded.
+
+---
+
 ## Symptom: DSO Trend charts are blank or drawn sideways
 
 **Cause:** the AR build script isn't the xlsxwriter version (v6/v11 code). The older openpyxl version builds the trend tabs from one day only and sets up the chart axes differently.
 
-**Fix:** redeploy `~/apollo-reports-deploy-v11.zip`. Check with `unzip -p ~/apollo-reports-deploy-v11.zip financial-daily/build_ar.py | grep -c "import xlsxwriter"` (should print 1).
+**Fix:** redeploy `~/apollo-reports-deploy-v12.zip`. Check with `unzip -p ~/apollo-reports-deploy-v12.zip financial-daily/build_ar.py | grep -c "import xlsxwriter"` (should print 1).
 
 ---
 
@@ -400,8 +414,8 @@ az webapp deploy \
   --type zip
 ```
 
-Known-good baselines as of 10/5/2026:
-- **Financial:** `~/apollo-reports-deploy-v11.zip` (v6 plus the T: prefix fix). Do not use v7 through v10.
+Known-good baselines as of 10/11/2026:
+- **Financial:** `~/apollo-reports-deploy-v12.zip` (financial-daily from v11, plus unconverted-notes). Do not use v7 through v10, `app_deploy.zip`, or `current_app.zip`.
 - **Supervision + Parent Training + Client Roster:** `~/apollo-supervision-deploy-v10.zip`
 - **Supervision + Parent Training only (before the roster):** `~/apollo-supervision-deploy-v9.zip`
 

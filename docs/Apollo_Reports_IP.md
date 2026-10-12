@@ -9,7 +9,7 @@
 
 ## 1. What This System Does
 
-Four report jobs run on schedules across two function apps.
+Five report jobs run across two function apps.
 
 | Report | Function App | Schedule | Delivery |
 |---|---|---|---|
@@ -17,6 +17,7 @@ Four report jobs run on schedules across two function apps.
 | Weekly Supervision | `apollo-supervision-func` | Mondays 8:00 AM ET | Email + Portal |
 | Weekly Parent Training | `apollo-supervision-func` | Mondays 8:30 AM ET | Email + Portal |
 | Client & Insurance Roster | `apollo-supervision-func` | Weekdays 9:00 AM ET | Portal only (no email) |
+| Unconverted Notes | `apollo-financial-reports-func` | When a schedule export CSV is dropped into the `unconverted-notes` container | One email per clinic team |
 
 Supervision, Parent Training, and the Client & Insurance Roster run inside the same function app as three separate timer-triggered functions. They share the billing input, the clinic mapping, and the initials code, so keeping them together avoids duplicate setup. Each function has its own schedule in its own `function.json`, so the roster runs every weekday while Supervision and Parent Training run only on Mondays. A bad deploy to this app affects all three.
 
@@ -63,8 +64,10 @@ The Static Web App reads from `outputs/{report}/{date}/*.xlsx`, it picks the new
 **`apollo-financial-reports-func`**
 - Plan: `labor-util-plan` (B1 Basic Linux, in `labor-util-rg`)
 - Runtime: Python 3.11
-- Function inside: `financial-daily` (cron `0 30 7 * * 1-5`, weekdays 7:30 AM ET)
-- Downloads billing + receivables CSVs → builds Revenue + AR XLSX → emails → archives to blob → writes snapshots
+- Two functions inside:
+  - `financial-daily` (cron `0 30 7 * * 1-5`, weekdays 7:30 AM ET). Downloads billing + receivables CSVs → builds Revenue + AR XLSX → emails → archives to blob → writes snapshots
+  - `unconverted-notes` (blob trigger on the `unconverted-notes` container, added 10/7/2026). Builds the unconverted-notes report from a schedule export dropped in by hand and emails each clinic team. Settings: `LABORUTIL_STORAGE`, `UNCONVERTED_BCC`, `UNCONVERTED_BCC_AS_CC`, `UNCONVERTED_DRY_RUN`.
+- After deploying to this app, confirm both functions with the host's own list (Troubleshooting, "Confirm all functions are registered"). `az functionapp function list` can be out of date for a while after a deploy.
 
 **`apollo-supervision-func`**
 - Plan: `labor-util-plan` (same B1)
@@ -350,11 +353,13 @@ Automatic via GitHub Actions. Push to `main` on `NathanM-Apollo/apollo-reporting
 
 Every function app deploy zip is in Cloud Shell home directory (`~/apollo-*-deploy-vN.zip`). These zips are the only copy of the function app source. Build every change on the newest known-good zip.
 
-Known-good baselines as of 10/5/2026:
-- `apollo-reports-deploy-v11.zip`: financial-daily. This is v6 (the version that ran through 9/15/2026) with one change, the T: prefix fix in both build scripts.
+Known-good baselines as of 10/11/2026:
+- `apollo-reports-deploy-v12.zip`: financial-daily (v6, the version that ran through 9/15/2026, with the T: prefix fix) plus `unconverted-notes`. `financial-daily` in v12 is byte-for-byte the same as v11.
 - `apollo-supervision-deploy-v10.zip`: supervision + parent training (months newest first, trailing 12) + client roster
 
-Do not use `apollo-reports-deploy-v7.zip` through `v10.zip`. They were built from stale copies of the build scripts (see Known Issues) and are missing the AR trend history and the xlsxwriter charts.
+Do not use `apollo-reports-deploy-v7.zip` through `v10.zip`, `app_deploy.zip`, or `current_app.zip`. They carry stale copies of the financial build scripts (see Known Issues): no AR trend history, no xlsxwriter charts, a hardcoded billing file name that crashes the run, and (in the 10/7 zips) a schedule that runs every day including weekends.
+
+To add or change any function in `apollo-financial-reports-func`, unzip `apollo-reports-deploy-v12.zip`, add or change only that function's folder, and check with `diff` that `financial-daily/` still matches v12 before deploying.
 
 SWA rollback is `git revert` in the repo.
 
@@ -406,7 +411,7 @@ SWA rollback is `git revert` in the repo.
 
 **SWA classifier heuristic.** Fragile value-based percent/currency detection. Adding a new report with unfamiliar column patterns may hit this, either match an existing opt-out (add "hrs" to headers) or extend the classifier in `prod/web/index.html`.
 
-**Never pull code from the function app's file view.** The ARM/Kudu file view (`.../extensions/Vfs/site/wwwroot/...`) has shown stale or missing files on both function apps, while the apps were running newer code. On 9/16/2026 a one-line fix built on files pulled from that view replaced the running AR and revenue scripts with older versions. That removed the AR trend history and the xlsxwriter charts, and brought back an old revenue tab. It took until 9/30 to find and fix. Always start from the newest known-good deploy zip.
+**Never pull code from the function app's file view.** The ARM/Kudu file view (`.../extensions/Vfs/site/wwwroot/...`) has shown stale or missing files on both function apps, while the apps were running newer code. On 9/16/2026 a one-line fix built on files pulled from that view replaced the running AR and revenue scripts with older versions. That removed the AR trend history and the xlsxwriter charts, and brought back an old revenue tab. It took until 9/30 to find and fix. It happened again on 10/7/2026: the `unconverted-notes` deploy was built on a copy downloaded from the running app (`current_app.zip`), which replaced v11's `financial-daily` with the old copy. Every financial run failed from 10/8 to 10/11 until v12 went in. Always start from the newest known-good deploy zip.
 
 **Check any change against the previous report before calling it done.** Compare tabs, chart counts, column counts, and titles between a report from before the change and one from after. Only data-driven differences should show up. The 9/30 comparison script is a good template.
 
